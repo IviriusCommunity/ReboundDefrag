@@ -24,8 +24,8 @@
                 </ListView.ItemTemplate>
             </ListView>
             <Grid>
-                <ToggleSwitch x:Name="AdvancedView" OffContent="Advanced View" OnContent="Advanced View" IsEnabled="False"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                <ToggleSwitch x:Name="AdvancedView" OffContent="Advanced View" OnContent="Advanced View" Toggled="AdvancedView_Toggled"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="150, 0, 0, 0">
                     <StackPanel.Resources>
 
                         <Style x:Key="AccentSplitButtonStyle" TargetType="SplitButton">
@@ -309,7 +309,7 @@
                             </Setter>
                         </Style>
                     </StackPanel.Resources>
-                    <TextBlock x:Name="CurrentDisk" Visibility="Collapsed" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="CurrentDisk" Visibility="Collapsed" VerticalAlignment="Center" TextWrapping="Wrap"/>
                     <ProgressRing x:Name="CurrentProgress" IsIndeterminate="False"/>
                     <Button Content="Analyze" Width="120" ToolTipService.ToolTip="Refresh the information of the selected drive to see whether it needs to be optimized or not." Click="Button_Click_2"/>
                     <SplitButton IsEnabled="True" x:Name="OptimizeButton" Style="{ThemeResource AccentSplitButtonStyle}" Width="150" Click="Button_Click" ToolTipService.ToolTip="Defragment and/or optimize the selected drive">

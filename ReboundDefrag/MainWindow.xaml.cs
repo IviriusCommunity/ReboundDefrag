@@ -38,6 +38,11 @@ using Microsoft.UI.Windowing;
 using System.Runtime.CompilerServices;
 using Windows.ApplicationModel.Core;
 using Windows.ApplicationModel;
+using System.Collections.ObjectModel;
+using System.Management.Automation;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Management;
+using System.Net.Http.Headers;
 
 namespace ReboundDefrag
 {
@@ -57,7 +62,7 @@ namespace ReboundDefrag
             // Set standard window properties
             SystemBackdrop = new MicaBackdrop();
             Title = "Optimize Drives - ALPHA v0.0.2";
-            LoadData();
+            LoadData(AdvancedView.IsOn);
             this.IsMaximizable = false;
             this.SetWindowSize(800, 670);
             this.IsResizable = false;
@@ -91,14 +96,14 @@ namespace ReboundDefrag
                                     {
                                         // Drive or partition inserted
                                         MyListView.ItemsSource = null;
-                                        LoadData();
+                                        LoadData(AdvancedView.IsOn);
                                         break;
                                     }
                                 case DBT_DEVICEREMOVECOMPLETE:
                                     {
                                         // Drive or partition removed
                                         MyListView.ItemsSource = null;
-                                        LoadData();
+                                        LoadData(AdvancedView.IsOn);
                                         break;
                                     }
                                 default:
@@ -266,6 +271,7 @@ namespace ReboundDefrag
 
         private const int InvalidHandleValue = -1;
         private const uint FILE_DEVICE_SSD = 0x00000060;
+        private const string V = "Capabilities";
 
         [StructLayout(LayoutKind.Sequential)]
         private struct STORAGE_PROPERTY_QUERY
@@ -400,6 +406,18 @@ namespace ReboundDefrag
                     VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
                     OptimizeButton.IsEnabled = false;
                 }
+                if (selectedItem.Name == "EFI System Partition")
+                {
+                    DetailsBar.Message = $"Media type: {selectedItem.MediaType}\nLast analyzed or optimized: Never\nCurrent status: cannot be optimized (EFI System Partition)";
+                    DetailsBar.Severity = InfoBarSeverity.Informational;
+                }
+                if (selectedItem.Name == "Recovery Partition")
+                {
+                    DetailsBar.Message = $"Media type: {selectedItem.MediaType}\nLast analyzed or optimized: Never\nCurrent status: cannot be optimized (Recovery Partition)";
+                    DetailsBar.Severity = InfoBarSeverity.Error;
+                    VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
+                    OptimizeButton.IsEnabled = false;
+                }
             }
         }
 
@@ -465,33 +483,32 @@ namespace ReboundDefrag
             }
         }
 
-        private async void LoadData()
+        public async Task LoadData(bool loadSystemPartitions)
         {
+            List<DiskItem> items = new List<DiskItem>();
+
             // Get the logical drives bitmask
             uint drivesBitMask = GetLogicalDrives();
             if (drivesBitMask == 0)
             {
-                Console.WriteLine("Failed to get logical drives.");
+                Debug.WriteLine("Failed to get logical drives.");
                 return;
             }
 
-            List<DiskItem> items = new List<DiskItem>();
-            Console.WriteLine("System Partitions:");
             for (char driveLetter = 'A'; driveLetter <= 'Z'; driveLetter++)
             {
                 uint mask = 1u << (driveLetter - 'A');
                 if ((drivesBitMask & mask) != 0)
                 {
                     string drive = $"{driveLetter}:\\";
-                    Console.WriteLine(drive);
 
                     StringBuilder volumeName = new StringBuilder(261);
                     StringBuilder fileSystemName = new StringBuilder(261);
                     if (GetVolumeInformation(drive, volumeName, volumeName.Capacity, out _, out _, out _, fileSystemName, fileSystemName.Capacity))
                     {
                         var newDriveLetter = drive.ToString().Remove(2, 1);
-                        Console.WriteLine($"  Volume Name: {volumeName}");
-                        Console.WriteLine($"  File System: {fileSystemName}");
+                        Debug.WriteLine($"  Volume Name: {volumeName}");
+                        Debug.WriteLine($"  File System: {fileSystemName}");
 
                         DriveType driveType;
 
@@ -565,11 +582,43 @@ namespace ReboundDefrag
                     }
                     else
                     {
-                        Console.WriteLine($"  Failed to get volume information for {drive}");
+                        Debug.WriteLine($"  Failed to get volume information for {drive}");
                     }
                 }
             }
+
+            if (loadSystemPartitions)
+            {
+                var syspart = SystemVolumes.GetSystemVolumes();
+
+                // Add system partitions to the items list
+                foreach (var result in syspart)
+                {
+                    string driveType = string.Empty;
+                    foreach (var diskitem in items)
+                    {
+                        if (diskitem.DriveLetter.Contains("C"))
+                        {
+                            driveType = diskitem.MediaType;
+                        }
+                    }
+                    var item = new DiskItem
+                    {
+                        Name = result.FriendlyName,
+                        ImagePath = "ms-appx:///Assets/Drive.png",
+                        MediaType = driveType,
+                        DriveLetter = result.GUID,
+                    };
+                    items.Add(item);
+                }
+            }
+
+            int selIndex = MyListView.SelectedIndex is not -1 ? MyListView.SelectedIndex : 0;
+
+            // Set the list view's item source
             MyListView.ItemsSource = items;
+
+            MyListView.SelectedIndex = selIndex >= items.Count ? items.Count - 1 : selIndex;
         }
 
         private async void LoadDriveTypes()
@@ -593,7 +642,7 @@ namespace ReboundDefrag
                 case DriveType.DRIVE_REMOVABLE:
                     return "Removable";
                 case DriveType.DRIVE_FIXED:
-                    return "SSD/HDD"; // Await the asynchronous method
+                    return CheckDriveType(driveRoot); // Await the asynchronous method
                 case DriveType.DRIVE_REMOTE:
                     return "Network";
                 case DriveType.DRIVE_CDROM:
@@ -606,9 +655,14 @@ namespace ReboundDefrag
             }
         }
 
+        private string CheckDriveType(string driveLetter)
+        {
+            return "SSD/HDD";
+        }
+
         private void Button_Click(object sender, SplitButtonClickEventArgs e)
         {
-            OptimizeSelected();
+            OptimizeSelected(AdvancedView.IsOn);
         }
 
         public void RestartAsAdmin(string args)
@@ -633,15 +687,17 @@ namespace ReboundDefrag
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to start process as admin: {ex.Message}");
+                Debug.WriteLine($"Failed to start process as admin: {ex.Message}");
             }
         }
 
-        public async void OptimizeSelected()
+        public async void OptimizeSelected(bool systemPartitions, bool delay = true)
         {
+            AdvancedView.IsOn = systemPartitions;
+
             if (!IsAdministrator())
             {
-                RestartAsAdmin($"SELECTED {MyListView.SelectedIndex}");
+                RestartAsAdmin($"SELECTED{(systemPartitions ? "-SYSTEM" : "")} {MyListView.SelectedIndex}");
                 return;
             }
 
@@ -688,7 +744,8 @@ namespace ReboundDefrag
                     OptimizeButton.IsEnabled = false;
                     VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
                     CurrentDisk.Visibility = Visibility.Visible;
-                    CurrentDisk.Text = $"Drive 1/1 ({volume}:) - Optimizing...";
+                    if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive 1/1 ({volume}:) - Optimizing...";
+                    else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} - Optimizing...";
 
                     await process.WaitForExitAsync();
 
@@ -709,14 +766,16 @@ namespace ReboundDefrag
             }
         }
 
-        public async void OptimizeAll(bool close)
+        public async void OptimizeAll(bool close, bool systemPartitions)
         {
+            AdvancedView.IsOn = systemPartitions;
+
             MyListView.IsEnabled = false;
 
             if (!IsAdministrator())
             {
-                if (close == true) RestartAsAdmin($"OPTIMIZEALLANDCLOSE");
-                else RestartAsAdmin($"OPTIMIZEALL");
+                if (close == true) RestartAsAdmin($"OPTIMIZEALLANDCLOSE{(systemPartitions ? "-SYSTEM" : "")}");
+                else RestartAsAdmin($"OPTIMIZEALL{(systemPartitions ? "-SYSTEM" : "")}");
                 return;
             }
 
@@ -773,7 +832,8 @@ namespace ReboundDefrag
                         OptimizeButton.IsEnabled = false;
                         VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
                         CurrentDisk.Visibility = Visibility.Visible;
-                        CurrentDisk.Text = $"Drive {i}/{j} ({volume}:) - Skipping...";
+                        if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive {i}/{j} ({volume}:) - Skipping...";
+                        else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} ({i}/{j}) - Skipping...";
 
                         await Task.Delay(50);
 
@@ -789,7 +849,8 @@ namespace ReboundDefrag
                         OptimizeButton.IsEnabled = false;
                         VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
                         CurrentDisk.Visibility = Visibility.Visible;
-                        CurrentDisk.Text = $"Drive {i}/{j} ({volume}:) - Optimizing...";
+                        if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive {i}/{j} ({volume}:) - Optimizing...";
+                        else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} ({i}/{j}) - Optimizing...";
 
                         await process.WaitForExitAsync();
 
@@ -908,12 +969,12 @@ namespace ReboundDefrag
 
         private void MenuFlyoutItem_Click(object sender, RoutedEventArgs e)
         {
-            OptimizeSelected();
+            OptimizeSelected(AdvancedView.IsOn);
         }
 
         private void MenuFlyoutItem_Click_1(object sender, RoutedEventArgs e)
         {
-            OptimizeAll(false);
+            OptimizeAll(false, AdvancedView.IsOn);
         }
 
         private void Button_Click_1(object sender, RoutedEventArgs e)
@@ -924,6 +985,11 @@ namespace ReboundDefrag
         private void Button_Click_2(object sender, RoutedEventArgs e)
         {
             LoadSelectedItemInfo(GetStatus());
+        }
+
+        private void AdvancedView_Toggled(object sender, RoutedEventArgs e)
+        {
+            LoadData(AdvancedView.IsOn);
         }
     }
     public class DefragInfo
@@ -1136,7 +1202,7 @@ namespace ReboundDefrag
             if (hDrive == null || hDrive.IsInvalid)
             {
                 string message = GetErrorMessage(Marshal.GetLastWin32Error());
-                Console.WriteLine("CreateFile failed. " + message);
+                Debug.WriteLine("CreateFile failed. " + message);
             }
 
             uint IOCTL_STORAGE_QUERY_PROPERTY = CTL_CODE(
@@ -1168,19 +1234,19 @@ namespace ReboundDefrag
             if (query_seek_penalty_result == false)
             {
                 string message = GetErrorMessage(Marshal.GetLastWin32Error());
-                Console.WriteLine("DeviceIoControl failed. " + message);
+                Debug.WriteLine("DeviceIoControl failed. " + message);
                 return false;
             }
             else
             {
                 if (query_seek_penalty_desc.IncursSeekPenalty == false)
                 {
-                    Console.WriteLine("This drive has NO SEEK penalty.");
+                    Debug.WriteLine("This drive has NO SEEK penalty.");
                     return false;
                 }
                 else
                 {
-                    Console.WriteLine("This drive has SEEK penalty.");
+                    Debug.WriteLine("This drive has SEEK penalty.");
                     return true;
                 }
             }
@@ -1202,7 +1268,7 @@ namespace ReboundDefrag
             if (hDrive == null || hDrive.IsInvalid)
             {
                 string message = GetErrorMessage(Marshal.GetLastWin32Error());
-                Console.WriteLine("CreateFile failed. " + message);
+                Debug.WriteLine("CreateFile failed. " + message);
             }
 
             uint IOCTL_ATA_PASS_THROUGH = CTL_CODE(
@@ -1240,7 +1306,7 @@ namespace ReboundDefrag
             if (result == false)
             {
                 string message = GetErrorMessage(Marshal.GetLastWin32Error());
-                Console.WriteLine("DeviceIoControl failed. " + message);
+                Debug.WriteLine("DeviceIoControl failed. " + message);
                 return true;
             }
             else
@@ -1251,12 +1317,12 @@ namespace ReboundDefrag
 
                 if (id_query.data[kNominalMediaRotRateWordIndex] == 1)
                 {
-                    Console.WriteLine("This drive is NON-ROTATE device.");
+                    Debug.WriteLine("This drive is NON-ROTATE device.");
                     return false;
                 }
                 else
                 {
-                    Console.WriteLine("This drive is ROTATE device.");
+                    Debug.WriteLine("This drive is ROTATE device.");
                     return true;
                 }
             }
@@ -1319,7 +1385,7 @@ namespace ReboundDefrag
             DriveInfo di = new DriveInfo(cDrive.ToString());
             if (di.DriveType != DriveType.Fixed)
             {
-                Console.WriteLine("This drive is not fixed drive.");
+                Debug.WriteLine("This drive is not fixed drive.");
             }
 
             string sDrive = "\\\\.\\" + cDrive.ToString() + ":";
@@ -1336,7 +1402,7 @@ namespace ReboundDefrag
             if (hDrive == null || hDrive.IsInvalid)
             {
                 string message = GetErrorMessage(Marshal.GetLastWin32Error());
-                Console.WriteLine("CreateFile failed. " + message);
+                Debug.WriteLine("CreateFile failed. " + message);
             }
 
             uint IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS = CTL_CODE(
@@ -1364,15 +1430,123 @@ namespace ReboundDefrag
                 query_disk_extents.Extents.Length != 1)
             {
                 string message = GetErrorMessage(Marshal.GetLastWin32Error());
-                Console.WriteLine("DeviceIoControl failed. " + message);
+                Debug.WriteLine("DeviceIoControl failed. " + message);
             }
             else
             {
-                Console.WriteLine("The physical drive number is: " +
+                Debug.WriteLine("The physical drive number is: " +
                                   query_disk_extents.Extents[0].DiskNumber);
             }
 
             return (int)query_disk_extents.Extents[0].DiskNumber;
+        }
+    }
+    public class VolumeInfo
+    {
+        public string GUID { get; set; }
+        public string FileSystem { get; set; }
+        public ulong Size { get; set; }
+        public string FriendlyName { get; set; }
+    }
+
+    public class SystemVolumes
+    {
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool GetVolumeInformation(
+            string rootPathName,
+            StringBuilder volumeNameBuffer,
+            int volumeNameSize,
+            out uint volumeSerialNumber,
+            out uint maximumComponentLength,
+            out uint fileSystemFlags,
+            StringBuilder fileSystemNameBuffer,
+            int nFileSystemNameSize);
+
+        public static List<VolumeInfo> GetSystemVolumes()
+        {
+            List<VolumeInfo> volumes = new List<VolumeInfo>();
+
+            // WMI query to get all volumes, including GUID paths
+            string query = "SELECT * FROM Win32_Volume WHERE DriveLetter IS NULL";
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(query))
+            {
+                foreach (ManagementObject volume in searcher.Get())
+                {
+                    string volumePath = volume["DeviceID"].ToString(); // This gives the \\?\Volume{GUID} path
+                    string fileSystem = volume["FileSystem"]?.ToString() ?? "Unknown";
+                    ulong size = (ulong)volume["Capacity"];
+
+                    // We can further refine this by querying for EFI, Recovery, etc., based on size and file system
+                    string friendlyName;
+                    if (fileSystem == "FAT32" && size < 512 * 1024 * 1024)
+                    {
+                        friendlyName = "EFI System Partition";
+                    }
+                    else if (fileSystem == "NTFS" && size > 500 * 1024 * 1024)
+                    {
+                        friendlyName = "Recovery Partition";
+                    }
+                    else if (fileSystem == "NTFS" && size < 500 * 1024 * 1024)
+                    {
+                        friendlyName = "System Reserved Partition";
+                    }
+                    else
+                    {
+                        friendlyName = "Unknown System Partition";
+                    }
+
+                    volumes.Add(new VolumeInfo
+                    {
+                        GUID = volumePath,
+                        FileSystem = fileSystem,
+                        Size = size,
+                        FriendlyName = friendlyName
+                    });
+                }
+            }
+
+            return volumes;
+        }
+    }
+
+    public class SSDOrHDDDriveInfo
+    {
+        public string Identifier { get; }
+        public string Model { get; private set; }
+        public string Type { get; private set; }
+
+        public SSDOrHDDDriveInfo(string identifier)
+        {
+            Identifier = identifier;
+            GetDriveType();
+        }
+
+        private void GetDriveType()
+        {
+            string query = string.IsNullOrWhiteSpace(Identifier) ?
+                "SELECT * FROM Win32_DiskDrive" :
+                $"SELECT * FROM Win32_DiskDrive WHERE DeviceID='{Identifier}' OR DeviceID='{GetVolumeGUID(Identifier)}'";
+
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(query))
+            {
+                foreach (ManagementObject drive in searcher.Get())
+                {
+                    Model = drive["Model"].ToString();
+                    string mediaType = drive["MediaType"]?.ToString() ?? "Unknown";
+                    Type = mediaType.Contains("SSD") ? "SSD" : "HDD";
+                    return; // Exit after the first matching drive
+                }
+            }
+
+            // If no drive found, set default values
+            Model = "Unknown";
+            Type = "Unknown";
+        }
+
+        private static string GetVolumeGUID(string driveLetter)
+        {
+            // Convert drive letter to GUID format if necessary
+            return $"\\\\?\\Volume{{{driveLetter.TrimEnd('\\').ToUpper()}}}\\";
         }
     }
 }

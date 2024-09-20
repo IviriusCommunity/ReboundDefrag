@@ -52,7 +52,23 @@ namespace ReboundDefrag
 
             string commandArgs = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
 
-            if (commandArgs.Contains("SELECTED"))
+            if (commandArgs.Contains("SELECTED-SYSTEM"))
+            {
+                try
+                {
+                    // Extract the index after "SELECTED "
+                    int selectedIndex = Int32.Parse(commandArgs.Substring(commandArgs.IndexOf("SELECTED-SYSTEM") + 16).Trim());
+                    await (m_window as MainWindow).LoadData(true);
+                    (m_window as MainWindow).MyListView.SelectedIndex = selectedIndex;
+                    await Task.Delay(50);
+                    (m_window as MainWindow).OptimizeSelected(true, true);
+                }
+                catch (Exception ex)
+                {
+                    await (m_window as MainWindow).ShowMessageDialogAsync(ex.Message);
+                }
+            }
+            else if (commandArgs.Contains("SELECTED"))
             {
                 try
                 {
@@ -60,29 +76,51 @@ namespace ReboundDefrag
                     int selectedIndex = Int32.Parse(commandArgs.Substring(commandArgs.IndexOf("SELECTED") + 9).Trim());
                     (m_window as MainWindow).MyListView.SelectedIndex = selectedIndex;
                     await Task.Delay(50);
-                    (m_window as MainWindow).OptimizeSelected();
+                    (m_window as MainWindow).OptimizeSelected(false);
                 }
                 catch (Exception ex)
                 {
                     await (m_window as MainWindow).ShowMessageDialogAsync(ex.Message);
                 }
             }
-            if (commandArgs == "OPTIMIZEALL")
+            else if (commandArgs == "OPTIMIZEALL-SYSTEM")
             {
                 try
                 {
-                    (m_window as MainWindow).OptimizeAll(false);
+                    (m_window as MainWindow).OptimizeAll(false, true);
                 }
                 catch (Exception ex)
                 {
                     await (m_window as MainWindow).ShowMessageDialogAsync(ex.Message);
                 }
             }
-            if (commandArgs == "OPTIMIZEALLANDCLOSE")
+            else if (commandArgs == "OPTIMIZEALL")
             {
                 try
                 {
-                    (m_window as MainWindow).OptimizeAll(true);
+                    (m_window as MainWindow).OptimizeAll(false, false);
+                }
+                catch (Exception ex)
+                {
+                    await (m_window as MainWindow).ShowMessageDialogAsync(ex.Message);
+                }
+            }
+            else if (commandArgs == "OPTIMIZEALLANDCLOSE-SYSTEM")
+            {
+                try
+                {
+                    (m_window as MainWindow).OptimizeAll(true, true);
+                }
+                catch (Exception ex)
+                {
+                    await (m_window as MainWindow).ShowMessageDialogAsync(ex.Message);
+                }
+            }
+            else if (commandArgs == "OPTIMIZEALLANDCLOSE")
+            {
+                try
+                {
+                    (m_window as MainWindow).OptimizeAll(true, false);
                 }
                 catch (Exception ex)
                 {
