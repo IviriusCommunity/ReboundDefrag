@@ -24,7 +24,7 @@
                 </ListView.ItemTemplate>
             </ListView>
             <Grid>
-                <ToggleSwitch x:Name="AdvancedView" OffContent="Advanced View" OnContent="Advanced View" Toggled="AdvancedView_Toggled"/>
+                <ToggleSwitch x:Name="AdvancedView" OffContent="Advanced" OnContent="Advanced" Toggled="AdvancedView_Toggled"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="150, 0, 0, 0">
                     <StackPanel.Resources>
 
@@ -80,14 +80,14 @@
                                                                             <VisualState x:Name="PointerOver">
                                                                                 <VisualState.Setters>
                                                                                     <Setter Target="RootGrid.Background" Value="{ThemeResource AccentFillColorSecondaryBrush}" />
-                                                                                    
+
                                                                                 </VisualState.Setters>
                                                                             </VisualState>
 
                                                                             <VisualState x:Name="Pressed">
                                                                                 <VisualState.Setters>
                                                                                     <Setter Target="RootGrid.Background" Value="Transparent" />
-                                                                                    
+
                                                                                 </VisualState.Setters>
                                                                             </VisualState>
 
@@ -311,7 +311,7 @@
                     </StackPanel.Resources>
                     <TextBlock x:Name="CurrentDisk" Visibility="Collapsed" VerticalAlignment="Center" TextWrapping="Wrap"/>
                     <ProgressRing x:Name="CurrentProgress" IsIndeterminate="False"/>
-                    <Button Content="Analyze" Width="120" ToolTipService.ToolTip="Refresh the information of the selected drive to see whether it needs to be optimized or not." Click="Button_Click_2"/>
+                    <Button x:Name="AnalyzeButton" Content="Analyze" Width="100" ToolTipService.ToolTip="Refresh the information of the selected drive to see whether it needs to be optimized or not." Click="Button_Click_2"/>
                     <SplitButton IsEnabled="True" x:Name="OptimizeButton" Style="{ThemeResource AccentSplitButtonStyle}" Width="150" Click="Button_Click" ToolTipService.ToolTip="Defragment and/or optimize the selected drive">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Image x:Name="Admin1" Source="/Assets/Administrator.png" Width="20"/>

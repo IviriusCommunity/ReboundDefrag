@@ -43,6 +43,7 @@ using System.Management.Automation;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Management;
 using System.Net.Http.Headers;
+using WinRT;
 
 namespace ReboundDefrag
 {
@@ -61,7 +62,7 @@ namespace ReboundDefrag
         {
             // Set standard window properties
             SystemBackdrop = new MicaBackdrop();
-            Title = "Optimize Drives - ALPHA v0.0.2";
+            Title = "Optimize Drives - ALPHA v0.0.3";
             LoadData(AdvancedView.IsOn);
             this.IsMaximizable = false;
             this.SetWindowSize(800, 670);
@@ -133,6 +134,7 @@ namespace ReboundDefrag
         {
             public string DriveLetter { get; set; }
             public string MediaType { get; set; }
+            public int ProgressValue { get; set; }
         }
 
         #region DLL
@@ -447,22 +449,26 @@ namespace ReboundDefrag
 
                         if (daysPassed == 0)
                         {
-                            return $"OK (Last optimized: today)";
+                            //return $"OK (Last optimized: today)";
+                            return $"OK";
                         }
 
                         if (daysPassed == 1)
                         {
-                            return $"OK (Last optimized: yesterday)";
+                            //return $"OK (Last optimized: yesterday)";
+                            return $"OK";
                         }
 
                         if (daysPassed < 50)
                         {
-                            return $"OK (Last optimized: {daysPassed} days ago)";
+                            //return $"OK (Last optimized: {daysPassed} days ago)";
+                            return $"OK";
                         }
 
                         if (daysPassed >= 50)
                         {
-                            return $"Needs optimization (Last optimized: {daysPassed} days ago)";
+                            //return $"Needs optimization (Last optimized: {daysPassed} days ago)";
+                            return $"Needs optimization";
                         }
 
                         else return "Unknown";
@@ -605,7 +611,7 @@ namespace ReboundDefrag
                     var item = new DiskItem
                     {
                         Name = result.FriendlyName,
-                        ImagePath = "ms-appx:///Assets/Drive.png",
+                        ImagePath = "ms-appx:///Assets/DriveSystem.png",
                         MediaType = driveType,
                         DriveLetter = result.GUID,
                     };
@@ -703,22 +709,47 @@ namespace ReboundDefrag
 
             foreach (DiskItem item in MyListView.SelectedItems)
             {
+                string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
                 string volume = item.DriveLetter.ToString().Remove(1, 2);
-                string arguments = $"Optimize-Volume -DriveLetter {volume}"; // /O to optimize the drive
-                                                                             //string arguments = $"Defrag {volume}: /O /U"; // /O to optimize the drive
+                string arguments = $@"
+$job = Start-Job -ScriptBlock {{
+    $global:OutputLines = @()
+    
+    # Capture all output including verbose messages
+    Optimize-Volume -DriveLetter {volume} -Defrag -Verbose | ForEach-Object {{
+        # Check if it's a progress update
+        if ($_ -like ""*Progress*"") {{
+            Write-Output ""Progress: $_""  # Modify to capture progress as needed
+        }} else {{
+            $global:OutputLines += $_
+            Write-Output $_  # Output normal messages
+        }}
+    }}
+}}
 
-                /*if (!IsAdmin())
-                {
-                    ShowMessage("The application must be running as Administrator to perform this task.");
-                    return;
-                }*/
+while ($job.State -eq 'Running') {{
+    Clear-Host
+    Start-Sleep -Seconds 0.01
+    $output = Receive-Job -Id $job.Id -Keep
+    if ($output) {{
+        Write-Output $output[-1]  # Output the last line
+    }}
+}}
+
+# Final output after the job completes
+Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
+
+";
+
+                // Ensure the script is written before proceeding
+                await File.WriteAllTextAsync(scriptPath, arguments);
 
                 try
                 {
                     var processInfo = new ProcessStartInfo
                     {
                         FileName = "powershell.exe",
-                        Arguments = arguments,
+                        Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",  // Use -File to execute the script
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -726,37 +757,93 @@ namespace ReboundDefrag
                         Verb = "runas"  // Run as administrator
                     };
 
-                    var process = new Process
-                    {
-                        StartInfo = processInfo,
-                        //EnableRaisingEvents = true
-                    };
+                    using var process = new Process { StartInfo = processInfo };
 
-                    //process.OutputDataReceived += (s, ea) => UpdateProgress(ea.Data);
-                    //process.ErrorDataReceived += (s, ea) => UpdateProgress(ea.Data);
+                    string outputData = "0";
+                    bool updateData = true;
+
+                    var alreadyUsed = new List<string>();
+
+                    process.OutputDataReceived += UpdateOutput;
+
+                    async void UpdateOutput(object sender, DataReceivedEventArgs args)
+                    {
+                        // Only process if there's data
+                        if (!string.IsNullOrEmpty(args.Data))
+                        {
+                            // Use the dispatcher to update the UI
+                            DispatcherQueue.TryEnqueue(async () => { await UpdateIO(args.Data); });
+
+                            // Store the output data
+                            outputData = "\n" + args.Data;
+                        }
+                    }
 
                     process.Start();
                     process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
 
                     LoadSelectedItemInfo("Optimizing...");
-                    CurrentProgress.IsIndeterminate = true;
+                    //CurrentProgress.IsIndeterminate = true;
                     OptimizeButton.IsEnabled = false;
+                    AnalyzeButton.IsEnabled = false;
                     VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
                     CurrentDisk.Visibility = Visibility.Visible;
-                    if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive 1/1 ({volume}:) - Optimizing...";
-                    else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} - Optimizing...";
+                    CurrentDisk.Text = "Optimizing...";
+                    //UpdateIO();
+
+                    async Task UpdateIO(string data)
+                    {
+                        if (!updateData) return;
+
+                        if (data.Contains("VERBOSE: ") && data.Contains(" complete."))
+                        {
+                            string a = data.Substring(data.LastIndexOf("VERBOSE: ")).Replace("VERBOSE: ", string.Empty);
+
+                            string dataToReplace = " complete.";
+
+                            DispatcherQueue.TryEnqueue(() => { RunUpdate(a, dataToReplace); });
+                        }
+
+                        //UpdateIO();
+                    }
+
+                    void RunUpdate(string a, string dataToReplace)
+                    {
+                        if (alreadyUsed.Contains(a) != true)
+                        {
+                            alreadyUsed.Add(a);
+                            CurrentProgress.Value = GetMaxPercentage(a);
+                            if (a.Contains(" complete..."))
+                            {
+                                dataToReplace = " complete...";
+                                if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete..."))}";
+                                else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} - {a.Remove(a.IndexOf(" complete..."))}";
+                            }
+                            else if (a.Contains(" complete."))
+                            {
+                                dataToReplace = " complete.";
+                                if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete."))}";
+                                else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} - {a.Remove(a.IndexOf(" complete."))}";
+
+                            }
+                        }
+                    }
 
                     await process.WaitForExitAsync();
 
+                    updateData = false;
                     CurrentProgress.IsIndeterminate = false;
                     OptimizeButton.IsEnabled = true;
+                    AnalyzeButton.IsEnabled = true;
                     CurrentDisk.Visibility = Visibility.Collapsed;
                     LoadSelectedItemInfo(GetStatus());
+
+                    File.Delete(scriptPath);
+                    alreadyUsed.Clear();
+                    CurrentProgress.Value = 0;
                 }
                 catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
                 {
-                    // Error 1223 indicates that the operation was canceled by the user (UAC prompt declined)
                     ShowMessage("Defragmentation was canceled by the user.");
                 }
                 catch (Exception ex)
@@ -764,6 +851,40 @@ namespace ReboundDefrag
                     ShowMessage($"Error: {ex.Message}");
                 }
             }
+        }
+
+        static List<int> FindAllOccurrences(string mainString, string substring)
+        {
+            List<int> indices = new List<int>();
+            int index = mainString.IndexOf(substring);
+
+            while (index != -1)
+            {
+                indices.Add(index);
+                index = mainString.IndexOf(substring, index + substring.Length);
+            }
+
+            return indices;
+        }
+
+        private int GetMaxPercentage(string data)
+        {
+            static string KeepOnlyNumbers(string input)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                foreach (char c in input)
+                {
+                    if (char.IsDigit(c))
+                    {
+                        sb.Append(c);
+                    }
+                }
+
+                return sb.ToString();
+            }
+            var match = KeepOnlyNumbers(data);
+            return int.Parse(match);
         }
 
         public async void OptimizeAll(bool close, bool systemPartitions)
@@ -786,15 +907,174 @@ namespace ReboundDefrag
 
             foreach (var item in MyListView.ItemsSource as List<DiskItem>)
             {
+
+                string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
+                string volume = item.DriveLetter.ToString().Remove(1, 2);
+                string arguments = $@"
+$job = Start-Job -ScriptBlock {{
+    $global:OutputLines = @()
+    
+    # Capture all output including verbose messages
+    Optimize-Volume -DriveLetter {volume} -Defrag -Verbose | ForEach-Object {{
+        # Check if it's a progress update
+        if ($_ -like ""*Progress*"") {{
+            Write-Output ""Progress: $_""  # Modify to capture progress as needed
+        }} else {{
+            $global:OutputLines += $_
+            Write-Output $_  # Output normal messages
+        }}
+    }}
+}}
+
+while ($job.State -eq 'Running') {{
+    Clear-Host
+    Start-Sleep -Seconds 0.01
+    $output = Receive-Job -Id $job.Id -Keep
+    if ($output) {{
+        Write-Output $output[-1]  # Output the last line
+    }}
+}}
+
+# Final output after the job completes
+Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
+
+";
+
+                // Ensure the script is written before proceeding
+                await File.WriteAllTextAsync(scriptPath, arguments);
+
+                try
+                {
+                    i++;
+
+                    if (DetailsBar.Severity == InfoBarSeverity.Error)
+                    {
+                        return;
+                    }
+                        var processInfo = new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",  // Use -File to execute the script
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        Verb = "runas"  // Run as administrator
+                    };
+
+                    using var process = new Process { StartInfo = processInfo };
+
+                    string outputData = "0";
+                    bool updateData = true;
+
+                    var alreadyUsed = new List<string>();
+
+                    process.OutputDataReceived += UpdateOutput;
+
+                    async void UpdateOutput(object sender, DataReceivedEventArgs args)
+                    {
+                        // Only process if there's data
+                        if (!string.IsNullOrEmpty(args.Data))
+                        {
+                            // Use the dispatcher to update the UI
+                            DispatcherQueue.TryEnqueue(async () => { await UpdateIO(args.Data); });
+
+                            // Store the output data
+                            outputData = "\n" + args.Data;
+                        }
+                    }
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+
+                    LoadSelectedItemInfo("Optimizing...");
+                    //CurrentProgress.IsIndeterminate = true;
+                    OptimizeButton.IsEnabled = false;
+                    AnalyzeButton.IsEnabled = false;
+                    VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
+                    CurrentDisk.Visibility = Visibility.Visible;
+                    CurrentDisk.Text = "Optimizing...";
+                    //UpdateIO();
+
+                    async Task UpdateIO(string data)
+                    {
+                        if (!updateData) return;
+
+                        if (data.Contains("VERBOSE: ") && data.Contains(" complete."))
+                        {
+                            string a = data.Substring(data.LastIndexOf("VERBOSE: ")).Replace("VERBOSE: ", string.Empty);
+
+                            string dataToReplace = " complete.";
+
+                            DispatcherQueue.TryEnqueue(() => { RunUpdate(a, dataToReplace); });
+                        }
+
+                        //UpdateIO();
+                    }
+
+                    async void RunUpdate(string a, string dataToReplace)
+                    {
+                        if (alreadyUsed.Contains(a) != true)
+                        {
+                            alreadyUsed.Add(a);
+                            CurrentProgress.Value = GetMaxPercentage(a);
+                            if (a.Contains(" complete..."))
+                            {
+                                dataToReplace = " complete...";
+                                if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive {i}/{j} ({volume}:) - {a.Remove(a.IndexOf(" complete..."))}";
+                                else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} ({i}/{j}) - {a.Remove(a.IndexOf(" complete..."))}";
+                            }
+                            else if (a.Contains(" complete."))
+                            {
+                                dataToReplace = " complete.";
+                                if ((item as DiskItem).DriveLetter.ToString().Contains(@"}") != true) CurrentDisk.Text = $"Drive {i}/{j} ({volume}:) - {a.Remove(a.IndexOf(" complete."))}";
+                                else CurrentDisk.Text = $"{(MyListView.SelectedItem as DiskItem).Name} ({i}/{j}) - {a.Remove(a.IndexOf(" complete."))}";
+
+                            }
+                        }
+                    }
+
+                    await process.WaitForExitAsync();
+
+                    updateData = false;
+                    CurrentProgress.IsIndeterminate = false;
+                    OptimizeButton.IsEnabled = true;
+                    AnalyzeButton.IsEnabled = true;
+                    CurrentDisk.Visibility = Visibility.Collapsed;
+                    LoadSelectedItemInfo(GetStatus());
+
+                    File.Delete(scriptPath);
+                    alreadyUsed.Clear();
+                    CurrentProgress.Value = 0;
+                    if (MyListView.SelectedIndex + 1 != j) MyListView.SelectedIndex++;
+                }
+                catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+                {
+                    ShowMessage("Defragmentation was canceled by the user.");
+                }
+                catch (Exception ex)
+                {
+                    ShowMessage($"Error: {ex.Message}");
+                }
+
+
+
+
+                /*
+
+
+
+
+
                 string volume = (item as DiskItem).DriveLetter.ToString().Remove(1, 2);
                 string arguments = $"Optimize-Volume -DriveLetter {volume}"; // /O to optimize the drive
                                                                              //string arguments = $"Defrag {volume}: /O /U"; // /O to optimize the drive
 
-                /*if (!IsAdmin())
+                if (!IsAdmin())
                 {
                     ShowMessage("The application must be running as Administrator to perform this task.");
                     return;
-                }*/
+                }
 
                 try
                 {
@@ -870,7 +1150,7 @@ namespace ReboundDefrag
                 catch (Exception ex)
                 {
                     ShowMessage($"Error: {ex.Message}");
-                }
+                }*/
             }
 
             i = 0;
@@ -987,9 +1267,9 @@ namespace ReboundDefrag
             LoadSelectedItemInfo(GetStatus());
         }
 
-        private void AdvancedView_Toggled(object sender, RoutedEventArgs e)
+        private async void AdvancedView_Toggled(object sender, RoutedEventArgs e)
         {
-            LoadData(AdvancedView.IsOn);
+            await LoadData(AdvancedView.IsOn);
         }
     }
     public class DefragInfo

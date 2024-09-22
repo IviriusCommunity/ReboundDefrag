@@ -30,6 +30,7 @@
     <None Remove="Assets\DriveFloppy.png" />
     <None Remove="Assets\DriveOptical.png" />
     <None Remove="Assets\DriveRemovable.png" />
+    <None Remove="Assets\DriveSystem.png" />
     <None Remove="Assets\DriveUnknown.png" />
     <None Remove="Assets\DriveWindows.png" />
     <None Remove="Assets\ReboundDefrag.ico" />
@@ -67,6 +68,11 @@
   -->
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <ProjectCapability Include="Msix" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Update="Assets\DriveSystem.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Update="AdminWindow.xaml">
