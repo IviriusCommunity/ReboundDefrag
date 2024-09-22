@@ -1,55 +1,27 @@
-using Microsoft.UI;
-using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
+using Microsoft.Win32.SafeHandles;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
+using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-using Windows.Storage;
-using WinUIEx;
-using Microsoft.UI.Xaml.Hosting;
-using Windows.Media.Core;
-using Windows.Media.Playback;
-using Windows.UI;
-using System.ComponentModel.DataAnnotations;
-using System.Diagnostics.Eventing.Reader;
-using WinUIEx.Messaging;
-using Windows.UI.Core;
-using System.Threading.Tasks;
-using System.Diagnostics;
-using System.Security.Principal;
-using System.Text.RegularExpressions;
-using Windows.Devices.Portable;
-using Windows.Management;
-using Microsoft.Win32.SafeHandles;
-using Microsoft.UI.Windowing;
-using System.Runtime.CompilerServices;
-using Windows.ApplicationModel.Core;
-using Windows.ApplicationModel;
-using System.Collections.ObjectModel;
-using System.Management.Automation;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Management;
-using System.Net.Http.Headers;
-using WinRT;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Windows.ApplicationModel;
+using Windows.ApplicationModel.Core;
+using WinUIEx;
+using WinUIEx.Messaging;
 
 namespace ReboundDefrag
 {
-    /// <summary>
-    /// An empty window that can be used on its own or navigated to within a Frame.
-    /// </summary>
     public sealed partial class MainWindow : WindowEx
     {
         public MainWindow()
@@ -58,12 +30,18 @@ namespace ReboundDefrag
             LoadWindowProperties();
         }
 
-        public void LoadWindowProperties()
+        public async void LoadWindowProperties()
         {
-            // Set standard window properties
+            // Set window backdrop to Mica for a modern translucent effect
             SystemBackdrop = new MicaBackdrop();
+
+            // Set the window title
             Title = "Optimize Drives - ALPHA v0.0.3";
-            LoadData(AdvancedView.IsOn);
+
+            // Load data based on the current state of 'AdvancedView'
+            await LoadData(AdvancedView.IsOn);
+
+            // Window customization
             this.IsMaximizable = false;
             this.SetWindowSize(800, 670);
             this.IsResizable = false;
@@ -71,45 +49,51 @@ namespace ReboundDefrag
             this.CenterOnScreen();
             this.SetIcon($"{AppContext.BaseDirectory}/Assets/ReboundDefrag.ico");
 
-            // Begin window message reading
+            // Begin monitoring window messages (such as device changes)
             var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             WindowMessageMonitor mon = new WindowMessageMonitor(hWnd);
+
+            // Subscribe to the WindowMessageReceived event
             mon.WindowMessageReceived += MessageReceived;
-            void MessageReceived(object sender, WindowMessageEventArgs e)
+
+            // Method to handle window messages
+            async void MessageReceived(object sender, WindowMessageEventArgs e)
             {
-                // Variables
+                // Constants for device change messages
                 const int WM_DEVICECHANGE = 0x0219;
                 const int DBT_DEVICEARRIVAL = 0x8000;
                 const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
 
-                // Switch messages
+                // Handle incoming messages
                 switch (e.Message.MessageId)
                 {
                     default:
                         {
+                            // No relevant message, break
                             break;
                         }
                     case WM_DEVICECHANGE:
                         {
+                            // Handle specific device changes
                             switch ((int)e.Message.WParam)
                             {
                                 case DBT_DEVICEARRIVAL:
                                     {
-                                        // Drive or partition inserted
-                                        MyListView.ItemsSource = null;
-                                        LoadData(AdvancedView.IsOn);
+                                        // Device or partition inserted
+                                        MyListView.ItemsSource = null; // Clear existing list
+                                        await LoadData(AdvancedView.IsOn); // Reload data based on AdvancedView state
                                         break;
                                     }
                                 case DBT_DEVICEREMOVECOMPLETE:
                                     {
-                                        // Drive or partition removed
-                                        MyListView.ItemsSource = null;
-                                        LoadData(AdvancedView.IsOn);
+                                        // Device or partition removed
+                                        MyListView.ItemsSource = null; // Clear existing list
+                                        await LoadData(AdvancedView.IsOn); // Reload data based on AdvancedView state
                                         break;
                                     }
                                 default:
                                     {
-                                        // Drive or partition action
+                                        // Handle any other device action
                                         break;
                                     }
                             }
@@ -118,15 +102,20 @@ namespace ReboundDefrag
                 }
             };
 
-            // Create a timer to reload the message listener every 5 seconds
+            // Set up a timer to periodically refresh the message listener every 5 seconds
             var timer = new DispatcherTimer();
-            timer.Interval = TimeSpan.FromSeconds(5);
+            timer.Interval = TimeSpan.FromSeconds(5); // Timer interval set to 5 seconds
+
+            // Timer event handler
             timer.Tick += (sender, e) =>
             {
-                mon.WindowMessageReceived += MessageReceived;
+                mon.WindowMessageReceived += MessageReceived; // Re-subscribe to the event to keep monitoring
             };
+
+            // Start the timer
             timer.Start();
 
+            // Check if the application is running with administrator privileges
             IsAdministrator();
         }
 
