@@ -38,9 +38,6 @@ namespace ReboundDefrag
             // Set the window title
             Title = "Optimize Drives - ALPHA v0.0.3";
 
-            // Load data based on the current state of 'AdvancedView'
-            await LoadData(AdvancedView.IsOn);
-
             // Window customization
             this.IsMaximizable = false;
             this.SetWindowSize(800, 670);
@@ -48,6 +45,9 @@ namespace ReboundDefrag
             this.AppWindow.DefaultTitleBarShouldMatchAppModeTheme = true;
             this.CenterOnScreen();
             this.SetIcon($"{AppContext.BaseDirectory}/Assets/ReboundDefrag.ico");
+
+            // Load data based on the current state of 'AdvancedView'
+            await LoadData(AdvancedView.IsOn);
 
             // Begin monitoring window messages (such as device changes)
             var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -628,8 +628,103 @@ namespace ReboundDefrag
             }
         }
 
+        private async Task<string> GetDriveTypeFromWMIAsync(string driveRoot)
+        {
+            return await Task.Run(async () =>
+            {
+                // Query for physical disks
+                string query = $"SELECT * FROM Win32_DiskDrive";
+                using (var searcher = new ManagementObjectSearcher(query))
+                {
+                    foreach (ManagementObject drive in searcher.Get())
+                    {
+                        string deviceID = drive["DeviceID"]?.ToString();
+
+                        // Ensure we're checking the correct device
+                        if (deviceID != null && deviceID.StartsWith("\\\\.\\PHYSICALDRIVE") && deviceID == await GetDeviceIdFromDriveAsync(driveRoot))
+                        {
+                            // Retrieve the TotalHeads property
+                            var totalHeads = drive["TotalHeads"];
+                            if (totalHeads != null)
+                            {
+                                // Convert to an integer
+                                int headsCount = Convert.ToInt32(totalHeads);
+
+                                // Differentiate based on the number of heads
+                                if (headsCount is > 0 and < 16)
+                                {
+                                    return "HDD (Hard Disk Drive)"; // Typical HDD head count
+                                }
+                                else if (headsCount >= 255)
+                                {
+                                    return "SSD (Solid State Drive)"; // SSDs may report 255
+                                }
+                            }
+                        }
+                    }
+                }
+                return "Unknown"; // Fallback if not found
+            });
+        }
+
+        private async Task<string> GetDeviceIdFromDriveAsync(string driveRoot)
+        {
+            string driveLetter = driveRoot.TrimEnd('\\'); // Clean the input
+
+            return await Task.Run(async () =>
+            {
+                string query = $"SELECT * FROM Win32_DiskDrive";
+                using (var searcher = new ManagementObjectSearcher(query))
+                {
+                    foreach (ManagementObject logicalDisk in searcher.Get())
+                    {
+                        if ((string)logicalDisk["DeviceID"] == await GetDeviceIdFromDriveAsync(driveRoot))
+                            return logicalDisk["DeviceID"]?.ToString(); // Return the DeviceID of the disk drive
+                    }
+                }
+                return "Unknown"; // Fallback if not found
+            });
+        }
+
+        private int GetDriveIndex(string driveLetter)
+        {
+            // Implement logic to retrieve the drive index based on drive letter
+            // You may also need to add logic to handle the GUID case separately if needed.
+
+            // Example implementation (needs proper indexing logic):
+            int index = -1;
+            // Query for Disk Drives and find the one matching the drive letter
+            string query = $"SELECT * FROM Win32_DiskDrive";
+            using (var searcher = new ManagementObjectSearcher(query))
+            {
+                foreach (ManagementObject drive in searcher.Get())
+                {
+                    // Get the partitions associated with this drive
+                    var partitions = drive.GetRelated("Win32_DiskDriveToDiskPartition");
+                    foreach (ManagementObject partition in partitions)
+                    {
+                        var logicalDisks = partition.GetRelated("Win32_DiskPartition");
+                        foreach (ManagementObject logicalDisk in logicalDisks)
+                        {
+                            if (logicalDisk["DeviceID"].ToString().Equals(driveLetter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Here we get the Index property for the drive
+                                index = Convert.ToInt32(drive["Index"]);
+                                break;
+                            }
+                        }
+                        if (index != -1) break;
+                    }
+                    if (index != -1) break;
+                }
+            }
+            return index; // Return the found index, or -1 if not found
+        }
+
         private async Task<string> GetDriveTypeDescriptionAsync(string driveRoot)
         {
+            await Task.Delay(500);
+
             DriveType driveType = GetDriveType(driveRoot);
 
             switch (driveType)
@@ -637,7 +732,7 @@ namespace ReboundDefrag
                 case DriveType.DRIVE_REMOVABLE:
                     return "Removable";
                 case DriveType.DRIVE_FIXED:
-                    return CheckDriveType(driveRoot); // Await the asynchronous method
+                    return await GetDriveTypeFromWMIAsync(driveRoot); // Await the asynchronous method
                 case DriveType.DRIVE_REMOTE:
                     return "Network";
                 case DriveType.DRIVE_CDROM:
