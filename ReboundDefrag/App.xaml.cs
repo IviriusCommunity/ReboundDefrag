@@ -42,6 +42,7 @@ namespace ReboundDefrag
                 {
                     // Extract the index after "SELECTED "
                     int selectedIndex = int.Parse(commandArgs[(commandArgs.IndexOf("SELECTED") + 9)..].Trim());
+                    await (m_window as MainWindow).LoadData(false);
                     (m_window as MainWindow).MyListView.SelectedIndex = selectedIndex;
                     await Task.Delay(50);
                     (m_window as MainWindow).OptimizeSelected(false);
@@ -55,6 +56,8 @@ namespace ReboundDefrag
             {
                 try
                 {
+                    await (m_window as MainWindow).LoadData(true);
+                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeAll(false, true);
                 }
                 catch (Exception ex)
@@ -66,6 +69,8 @@ namespace ReboundDefrag
             {
                 try
                 {
+                    await (m_window as MainWindow).LoadData(false);
+                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeAll(false, false);
                 }
                 catch (Exception ex)
@@ -77,6 +82,7 @@ namespace ReboundDefrag
             {
                 try
                 {
+                    await (m_window as MainWindow).LoadData(true);
                     (m_window as MainWindow).OptimizeAll(true, true);
                 }
                 catch (Exception ex)
@@ -88,6 +94,7 @@ namespace ReboundDefrag
             {
                 try
                 {
+                    await (m_window as MainWindow).LoadData(false);
                     (m_window as MainWindow).OptimizeAll(true, false);
                 }
                 catch (Exception ex)

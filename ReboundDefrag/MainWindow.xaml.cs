@@ -696,6 +696,8 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
         {
             AdvancedView.IsOn = systemPartitions;
 
+            await LoadData(systemPartitions);
+
             Lock(false, "Optimizing...", true);
 
             MyListView.IsEnabled = false;
@@ -714,7 +716,6 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
             foreach (var item in (List<DiskItem>)MyListView.ItemsSource)
             {
-
                 string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
                 string? volume = item.DriveLetter?.ToString().Remove(1, 2);
                 string arguments = $@"
