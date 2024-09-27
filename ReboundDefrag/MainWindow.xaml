@@ -334,7 +334,7 @@
                     </SplitButton>
                 </StackPanel>
             </Grid>
-            <InfoBar x:Name="DetailsBar" IsOpen="True" IsClosable="False" Title="Local Disk (C:)" Message="Media type: SSD (Solid state drive)&#x0a;Last analyzed or optimized: 15.07.2024 10:19&#x0a;Current status: OK (0 days since last retrim)"/>
+            <InfoBar x:Name="DetailsBar" IsOpen="True" IsClosable="False" Title="Unknown Drive (C:)" Message="Media type: Loading...&#x0a;Last analyzed or optimized: Loading...&#x0a;Current status: Loading..."/>
             <Grid Padding="15" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}" BorderThickness="1" CornerRadius="4" Height="120">
                 <StackPanel Spacing="5">
                     <TextBlock Text="Scheduled optimization" FontWeight="SemiBold"/>

@@ -1,14 +1,14 @@
-using Markdig.Parsers;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32.SafeHandles;
+using ReboundDefrag.Helpers;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Management;
@@ -19,10 +19,10 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Core;
-using Windows.Devices.Enumeration;
-using Windows.Storage;
 using WinUIEx;
 using WinUIEx.Messaging;
+
+#nullable enable
 
 namespace ReboundDefrag
 {
@@ -30,13 +30,7 @@ namespace ReboundDefrag
     {
         public MainWindow()
         {
-            this.InitializeComponent();
-            //LoadWindowProperties();
-        }
-
-        public async void LoadWindowProperties()
-        {
-            await LoadAppAsync();
+            this?.InitializeComponent();
         }
 
         public async Task LoadAppAsync()
@@ -48,72 +42,28 @@ namespace ReboundDefrag
             Title = "Optimize Drives - ALPHA v0.0.3";
 
             // Window customization
-            this.IsMaximizable = false;
+            IsMaximizable = false;
             this.SetWindowSize(800, 670);
-            this.IsResizable = false;
-            this.AppWindow.DefaultTitleBarShouldMatchAppModeTheme = true;
+            IsResizable = false;
+            AppWindow.DefaultTitleBarShouldMatchAppModeTheme = true;
             this.CenterOnScreen();
-            this.SetIcon($"{AppContext.BaseDirectory}/Assets/ReboundDefrag.ico");
+            this.SetIcon(@$"{AppContext.BaseDirectory}/Assets/ReboundDefrag.ico");
 
             // Load data based on the current state of 'AdvancedView'
             await LoadData(AdvancedView.IsOn);
 
             // Begin monitoring window messages (such as device changes)
             var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            WindowMessageMonitor mon = new WindowMessageMonitor(hWnd);
+            WindowMessageMonitor mon = new(hWnd);
 
             // Subscribe to the WindowMessageReceived event
             mon.WindowMessageReceived += MessageReceived;
 
-            // Method to handle window messages
-            async void MessageReceived(object sender, WindowMessageEventArgs e)
-            {
-                // Constants for device change messages
-                const int WM_DEVICECHANGE = 0x0219;
-                const int DBT_DEVICEARRIVAL = 0x8000;
-                const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
-
-                // Handle incoming messages
-                switch (e.Message.MessageId)
-                {
-                    default:
-                        {
-                            // No relevant message, break
-                            break;
-                        }
-                    case WM_DEVICECHANGE:
-                        {
-                            // Handle specific device changes
-                            switch ((int)e.Message.WParam)
-                            {
-                                case DBT_DEVICEARRIVAL:
-                                    {
-                                        // Device or partition inserted
-                                        MyListView.ItemsSource = null; // Clear existing list
-                                        await LoadData(AdvancedView.IsOn); // Reload data based on AdvancedView state
-                                        break;
-                                    }
-                                case DBT_DEVICEREMOVECOMPLETE:
-                                    {
-                                        // Device or partition removed
-                                        MyListView.ItemsSource = null; // Clear existing list
-                                        await LoadData(AdvancedView.IsOn); // Reload data based on AdvancedView state
-                                        break;
-                                    }
-                                default:
-                                    {
-                                        // Handle any other device action
-                                        break;
-                                    }
-                            }
-                            break;
-                        }
-                }
-            };
-
             // Set up a timer to periodically refresh the message listener every 5 seconds
-            var timer = new DispatcherTimer();
-            timer.Interval = TimeSpan.FromSeconds(5); // Timer interval set to 5 seconds
+            var timer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5) // Timer interval set to 5 seconds
+            };
 
             // Timer event handler
             timer.Tick += (sender, e) =>
@@ -128,215 +78,52 @@ namespace ReboundDefrag
             IsAdministrator();
         }
 
+        private async void MessageReceived(object? sender, WindowMessageEventArgs e)
+        {
+            // Handle incoming messages
+            switch (e.Message.MessageId)
+            {
+                default:
+                    {
+                        // No relevant message, break
+                        break;
+                    }
+                case Win32Helper.WM_DEVICECHANGE:
+                    {
+                        // Handle specific device changes
+                        switch ((int)e.Message.WParam)
+                        {
+                            case Win32Helper.DBT_DEVICEARRIVAL:
+                                {
+                                    // Device or partition inserted
+                                    MyListView.ItemsSource = null; // Clear existing list
+                                    await LoadData(AdvancedView.IsOn); // Reload data based on AdvancedView state
+                                    break;
+                                }
+                            case Win32Helper.DBT_DEVICEREMOVECOMPLETE:
+                                {
+                                    // Device or partition removed
+                                    MyListView.ItemsSource = null; // Clear existing list
+                                    await LoadData(AdvancedView.IsOn); // Reload data based on AdvancedView state
+                                    break;
+                                }
+                            default:
+                                {
+                                    // Handle any other device action
+                                    break;
+                                }
+                        }
+                        break;
+                    }
+            }
+        }
+
         public class DiskItem : Item
         {
-            public string DriveLetter { get; set; }
-            public string MediaType { get; set; }
+            public string? DriveLetter { get; set; }
+            public string? MediaType { get; set; }
             public int ProgressValue { get; set; }
         }
-
-        #region DLL
-
-        private static IntPtr SetWindowLong(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
-        {
-            if (IntPtr.Size == 4)
-            {
-                return SetWindowLongPtr32(hWnd, nIndex, dwNewLong);
-            }
-            return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
-        }
-
-        [DllImport("User32.dll", CharSet = CharSet.Auto, EntryPoint = "SetWindowLong")]
-        private static extern IntPtr SetWindowLongPtr32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
-        [DllImport("User32.dll", CharSet = CharSet.Auto, EntryPoint = "SetWindowLongPtr")]
-        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
-        private const int GWL_HWNDPARENT = (-8);
-
-        [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        private static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
-
-        public static void CreateModalWindow(WindowEx parentWindow, WindowEx childWindow, bool summonWindowAutomatically = true, bool blockInput = false)
-        {
-            IntPtr hWndChildWindow = WinRT.Interop.WindowNative.GetWindowHandle(childWindow);
-            IntPtr hWndParentWindow = WinRT.Interop.WindowNative.GetWindowHandle(parentWindow);
-            SetWindowLong(hWndChildWindow, GWL_HWNDPARENT, hWndParentWindow);
-            (childWindow.AppWindow.Presenter as OverlappedPresenter).IsModal = true;
-            if (blockInput == true)
-            {
-                EnableWindow(hWndParentWindow, false);
-                childWindow.Closed += ChildWindow_Closed;
-                void ChildWindow_Closed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
-                {
-                    EnableWindow(hWndParentWindow, true);
-                }
-            }
-            if (summonWindowAutomatically == true) childWindow.Show();
-            WindowMessageMonitor _msgMonitor;
-
-            _msgMonitor = new WindowMessageMonitor(childWindow);
-            _msgMonitor.WindowMessageReceived += (_, e) =>
-            {
-                const int WM_NCLBUTTONDBLCLK = 0x00A3;
-                if (e.Message.MessageId == WM_NCLBUTTONDBLCLK)
-                {
-                    // Disable double click on title bar to maximize window
-                    e.Result = 0;
-                    e.Handled = true;
-                }
-            };
-        }
-
-        [DllImport("dwmapi.dll", SetLastError = true)]
-        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern uint GetLogicalDrives();
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern bool GetVolumeInformation(
-            string lpRootPathName,
-            StringBuilder lpVolumeNameBuffer,
-            int nVolumeNameSize,
-            out uint lpVolumeSerialNumber,
-            out uint lpMaximumComponentLength,
-            out uint lpFileSystemFlags,
-            StringBuilder lpFileSystemNameBuffer,
-            int nFileSystemNameSize);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr CreateFile(
-            string lpFileName,
-            uint dwDesiredAccess,
-            uint dwShareMode,
-            IntPtr lpSecurityAttributes,
-            uint dwCreationDisposition,
-            uint dwFlagsAndAttributes,
-            IntPtr hTemplateFile);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool DeviceIoControl(
-            IntPtr hDevice,
-            uint dwIoControlCode,
-            IntPtr lpInBuffer,
-            uint nInBufferSize,
-            IntPtr lpOutBuffer,
-            uint nOutBufferSize,
-            out uint lpBytesReturned,
-            IntPtr lpOverlapped);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool CloseHandle(IntPtr hObject);
-
-        private const uint IOCTL_DISK_GET_DRIVE_GEOMETRY_EX = 0x000700A0;
-        private const uint FILE_SHARE_READ = 0x00000001;
-        private const uint FILE_SHARE_WRITE = 0x00000002;
-        private const uint OPEN_EXISTING = 0x00000003;
-        private const uint GENERIC_READ = 0x80000000;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct DISK_GEOMETRY_EX
-        {
-            public long DiskSize;
-            public MEDIA_TYPE MediaType;
-            // Other members are omitted for brevity
-        }
-
-        private enum MEDIA_TYPE
-        {
-            Unknown,
-            RemovableMedia,
-            FixedMedia,
-            // Other values are omitted for brevity
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern DriveType GetDriveType(string lpRootPathName);
-
-        private enum DriveType : uint
-        {
-            DRIVE_UNKNOWN = 0,
-            DRIVE_NO_ROOT_DIR = 1,
-            DRIVE_REMOVABLE = 2,
-            DRIVE_FIXED = 3,
-            DRIVE_REMOTE = 4,
-            DRIVE_CDROM = 5,
-            DRIVE_RAMDISK = 6
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        private static extern uint GetDriveTypeWin32(string lpRootPathName);
-
-        private const int InvalidHandleValue = -1;
-        private const uint FILE_DEVICE_SSD = 0x00000060;
-        private const string V = "Capabilities";
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct STORAGE_PROPERTY_QUERY
-        {
-            public uint PropertyId;
-            public uint QueryType;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
-            public byte[] AdditionalParameters;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct STORAGE_DESCRIPTOR_HEADER
-        {
-            public uint Version;
-            public uint Size;
-        }
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-        private struct STORAGE_DEVICE_DESCRIPTOR
-        {
-            public uint Version;
-            public uint Size;
-            public byte DeviceType;
-            public byte DeviceTypeModifier;
-            [MarshalAs(UnmanagedType.U1)]
-            public bool RemovableMedia;
-            [MarshalAs(UnmanagedType.U1)]
-            public bool CommandQueueing;
-            public uint VendorIdOffset;
-            public uint ProductIdOffset;
-            public uint ProductRevisionOffset;
-            public uint SerialNumberOffset;
-            public STORAGE_BUS_TYPE BusType;
-            public uint RawPropertiesLength;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10240)]
-            public byte[] RawDeviceProperties;
-        }
-
-        private enum STORAGE_BUS_TYPE
-        {
-            BusTypeUnknown = 0x00,
-            BusTypeScsi = 0x1,
-            BusTypeAtapi = 0x2,
-            BusTypeAta = 0x3,
-            BusType1394 = 0x4,
-            BusTypeSsa = 0x5,
-            BusTypeFibre = 0x6,
-            BusTypeUsb = 0x7,
-            BusTypeRAID = 0x8,
-            BusTypeiScsi = 0x9,
-            BusTypeSas = 0xA,
-            BusTypeSata = 0xB,
-            BusTypeSd = 0xC,
-            BusTypeMmc = 0xD,
-            BusTypeVirtual = 0xE,
-            BusTypeFileBackedVirtual = 0xF,
-            BusTypeSpaces = 0x10,
-            BusTypeNvme = 0x11,
-            BusTypeSCM = 0x12,
-            BusTypeUfs = 0x13,
-            BusTypeMax = 0x14,
-            BusTypeMaxReserved = 0x7F
-        }
-
-        #endregion DLL
 
         public bool IsAdministrator()
         {
@@ -361,14 +148,13 @@ namespace ReboundDefrag
         {
             if (MyListView.SelectedItem != null)
             {
-                DiskItem selectedItem = MyListView.SelectedItem as DiskItem;
+                DiskItem? selectedItem = MyListView.SelectedItem as DiskItem;
                 // Handle the selection change event
 
-                string selI;
                 try
                 {
                     List<string> i = DefragInfo.GetEventLogEntriesForID(258);
-                    return i.Last(s => s.Contains($"({selectedItem.DriveLetter.ToString().Remove(2, 1)})"));
+                    return i.Last(s => s.Contains($"({selectedItem?.DriveLetter?.ToString().Remove(2, 1)})"));
                 }
                 catch
                 {
@@ -390,28 +176,28 @@ namespace ReboundDefrag
             }
             if (MyListView.SelectedItem != null)
             {
-                DiskItem selectedItem = MyListView.SelectedItem as DiskItem;
-                DetailsBar.Title = selectedItem.Name;
-                DetailsBar.Message = $"Media type: {selectedItem.MediaType}\nLast analyzed or optimized: {info.Substring(0, info.Length - 4)}\nCurrent status: {status}";
+                DiskItem? selectedItem = MyListView.SelectedItem as DiskItem;
+                DetailsBar.Title = selectedItem?.Name;
+                DetailsBar.Message = $"Media type: {selectedItem?.MediaType}\nLast analyzed or optimized: {info[..^4]}\nCurrent status: {status}";
                 DetailsBar.Severity = InfoBarSeverity.Informational;
                 OptimizeButton.IsEnabled = true;
                 if (status.Contains("Needs optimization"))
                 {
                     DetailsBar.Severity = InfoBarSeverity.Warning;
                 }
-                if (selectedItem.MediaType == "CD-ROM")
+                if (selectedItem?.MediaType == "CD-ROM")
                 {
                     DetailsBar.Message = "Media type: CD-ROM\nLast analyzed or optimized: Never\nCurrent status: cannot be optimized";
                     DetailsBar.Severity = InfoBarSeverity.Error;
                     VisualStateManager.GoToState(OptimizeButton, "Disabled", true);
                     OptimizeButton.IsEnabled = false;
                 }
-                if (selectedItem.Name == "EFI System Partition")
+                if (selectedItem?.Name == "EFI System Partition")
                 {
                     DetailsBar.Message = $"Media type: {selectedItem.MediaType}\nLast analyzed or optimized: Never\nCurrent status: cannot be optimized (EFI System Partition)";
                     DetailsBar.Severity = InfoBarSeverity.Informational;
                 }
-                if (selectedItem.Name == "Recovery Partition")
+                if (selectedItem?.Name == "Recovery Partition")
                 {
                     DetailsBar.Message = $"Media type: {selectedItem.MediaType}\nLast analyzed or optimized: Never\nCurrent status: cannot be optimized (Recovery Partition)";
                     DetailsBar.Severity = InfoBarSeverity.Error;
@@ -432,78 +218,79 @@ namespace ReboundDefrag
                     List<string> i = DefragInfo.GetEventLogEntriesForID(258);
                     var selectedItem = MyListView.SelectedItem as DiskItem;
 
-                    var selI = i.Last(s => s.Contains($"({selectedItem.DriveLetter.ToString().Remove(2, 1)})"));
+                    var selI = i.Last(s => s.Contains($"({selectedItem?.DriveLetter?.ToString().Remove(2, 1)})"));
 
-                    var localDate = DateTime.Parse(selI.Substring(0, selI.Length - 4));
+                    var localDate = DateTime.Parse(selI[..^4]);
 
                     // Get the current local date and time
                     DateTime currentDate = DateTime.Now;
 
                     // Calculate the days passed
-                    if (localDate != null)
+                    TimeSpan timeSpan = currentDate - localDate;
+                    int daysPassed = timeSpan.Days;
+
+                    if (daysPassed == 0)
                     {
-                        TimeSpan timeSpan = (TimeSpan)(currentDate - localDate);
-                        int daysPassed = timeSpan.Days;
-
-                        if (daysPassed == 0)
-                        {
-                            //return $"OK (Last optimized: today)";
-                            return $"OK";
-                        }
-
-                        if (daysPassed == 1)
-                        {
-                            //return $"OK (Last optimized: yesterday)";
-                            return $"OK";
-                        }
-
-                        if (daysPassed < 50)
-                        {
-                            //return $"OK (Last optimized: {daysPassed} days ago)";
-                            return $"OK";
-                        }
-
-                        if (daysPassed >= 50)
-                        {
-                            //return $"Needs optimization (Last optimized: {daysPassed} days ago)";
-                            return $"Needs optimization";
-                        }
-
-                        else return "Unknown";
+                        //return $"OK (Last optimized: today)";
+                        return $"OK";
                     }
-                    else
+
+                    if (daysPassed == 1)
                     {
-                        return "Unknown";
+                        //return $"OK (Last optimized: yesterday)";
+                        return $"OK";
                     }
+
+                    if (daysPassed < 50)
+                    {
+                        //return $"OK (Last optimized: {daysPassed} days ago)";
+                        return $"OK";
+                    }
+
+                    if (daysPassed >= 50)
+                    {
+                        //return $"Needs optimization (Last optimized: {daysPassed} days ago)";
+                        return $"Needs optimization";
+                    }
+
+                    else return "Unknown";
                 }
                 else
                 {
                     return "Please select an item to proceed.";
                 }
             }
-            catch (Exception ex)
+            catch
             {
                 return "Needs optimization";
             }
         }
 
+        public void Lock(bool areItemsEnabled, string message = "")
+        {
+            AnalyzeButton.IsEnabled = areItemsEnabled;
+            OptimizeButton.IsEnabled = areItemsEnabled;
+            MyListView.IsEnabled = areItemsEnabled;
+            AdvancedView.IsEnabled = areItemsEnabled;
+            CurrentDisk.Visibility = areItemsEnabled == true ? Visibility.Collapsed : Visibility.Visible;
+            CurrentDisk.Text = message;
+            CurrentProgress.IsIndeterminate = !areItemsEnabled;
+        }
+
         public async Task LoadData(bool loadSystemPartitions)
         {
-            AnalyzeButton.IsEnabled = false;
-            OptimizeButton.IsEnabled = false;
-            MyListView.IsEnabled = false;
-            AdvancedView.IsEnabled = false;
-            CurrentDisk.Visibility = Visibility.Visible;
-            CurrentDisk.Text = "Loading drive information...";
-            CurrentProgress.IsIndeterminate = true;
+            Lock(false, "Loading drive information...");
 
-            List<DiskItem> items = new List<DiskItem>();
+            // Initial delay
+            // Essential for ensuring the UI loads before starting tasks
+            await Task.Delay(100);
+
+            List<DiskItem> items = [];
 
             // Get the logical drives bitmask
-            uint drivesBitMask = GetLogicalDrives();
+            uint drivesBitMask = Win32Helper.GetLogicalDrives();
             if (drivesBitMask == 0)
             {
-                Debug.WriteLine("Failed to get logical drives.");
                 return;
             }
 
@@ -514,28 +301,12 @@ namespace ReboundDefrag
                 {
                     string drive = $"{driveLetter}:\\";
 
-                    StringBuilder volumeName = new StringBuilder(261);
-                    StringBuilder fileSystemName = new StringBuilder(261);
-                    if (GetVolumeInformation(drive, volumeName, volumeName.Capacity, out _, out _, out _, fileSystemName, fileSystemName.Capacity))
+                    StringBuilder volumeName = new(261);
+                    StringBuilder fileSystemName = new(261);
+                    if (Win32Helper.GetVolumeInformation(drive, volumeName, volumeName.Capacity, out _, out _, out _, fileSystemName, fileSystemName.Capacity))
                     {
                         var newDriveLetter = drive.ToString().Remove(2, 1);
-                        Debug.WriteLine($"  Volume Name: {volumeName}");
-                        Debug.WriteLine($"  File System: {fileSystemName}");
-
-                        DriveType driveType;
-
-                        try
-                        {
-                            // Get drive type
-                            driveType = GetDriveType(drive);
-                        }
-                        catch
-                        {
-                            driveType = DriveType.DRIVE_UNKNOWN;
-                        }
-
-                        string mediaType = "Unknown";
-                        mediaType = await GetDriveTypeDescriptionAsync(drive);
+                        string mediaType = GetDriveTypeDescriptionAsync(drive);
 
                         if (volumeName.ToString() != string.Empty)
                         {
@@ -558,7 +329,7 @@ namespace ReboundDefrag
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveOptical.png";
                             }
-                            if (item.DriveLetter.Contains("C"))
+                            if (item.DriveLetter.Contains('C'))
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveWindows.png";
                             }
@@ -585,7 +356,7 @@ namespace ReboundDefrag
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveOptical.png";
                             }
-                            if (item.DriveLetter.Contains("C"))
+                            if (item.DriveLetter.Contains('C'))
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveWindows.png";
                             }
@@ -606,10 +377,10 @@ namespace ReboundDefrag
                 // Add system partitions to the items list
                 foreach (var result in syspart)
                 {
-                    string driveType = string.Empty;
+                    string? driveType = string.Empty;
                     foreach (var diskitem in items)
                     {
-                        if (diskitem.DriveLetter.Contains("C"))
+                        if (diskitem.DriveLetter != null && diskitem.DriveLetter.Contains('C'))
                         {
                             driveType = diskitem.MediaType;
                         }
@@ -632,112 +403,43 @@ namespace ReboundDefrag
 
             MyListView.SelectedIndex = selIndex >= items.Count ? items.Count - 1 : selIndex;
 
-            AnalyzeButton.IsEnabled = true;
-            OptimizeButton.IsEnabled = true;
-            MyListView.IsEnabled = true;
-            AdvancedView.IsEnabled = true;
-            CurrentDisk.Visibility = Visibility.Collapsed;
-            CurrentProgress.IsIndeterminate = false;
-        }
-
-        private async void LoadDriveTypes()
-        {
-            var drives = System.IO.DriveInfo.GetDrives();
-            List<string> driveTypes = new List<string>();
-
-            foreach (var drive in drives)
-            {
-                string driveTypeDescription = $"{drive.Name} - {await GetDriveTypeDescriptionAsync(drive.RootDirectory.FullName)}";
-                driveTypes.Add(driveTypeDescription);
-            }
+            Lock(true);
         }
 
         public static string GetDiskDriveFromLetter(string driveLetter)
         {
-            /*
-            // Create a ManagementObjectSearcher to query the Win32_DiskDrive class
-            ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_DiskDrive");
-
-            foreach (ManagementObject disk in searcher.Get())
-            {
-                // Get the device ID of the disk
-                string deviceID = disk["DeviceID"].ToString();
-
-                // Create a ManagementObjectSearcher to query the Win32_LogicalDiskToPartition class
-                ManagementObjectSearcher partitionSearcher = new ManagementObjectSearcher(
-                    $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{deviceID}'}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
-
-                foreach (ManagementObject partition in partitionSearcher.Get())
-                {
-                    // Create a ManagementObjectSearcher to query the Win32_LogicalDisk class
-                    ManagementObjectSearcher logicalDiskSearcher = new ManagementObjectSearcher(
-                        $"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
-
-                    foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get())
-                    {
-                        // Check if the logical disk is drive C
-                        if (logicalDisk["DeviceID"].ToString() == driveLetter.Replace(@"\", ""))
-                        {
-                            // Output the TotalHeads property of the disk
-                            Debug.WriteLine($"TotalCylinders: {disk["TotalCylinders"]}");
-                            // Output the TotalHeads property of the disk
-                            Debug.WriteLine($"TotalHeads: {disk["TotalHeads"]}");
-                            // Output the TotalHeads property of the disk
-                            Debug.WriteLine($"TotalSectors: {disk["TotalSectors"]}");
-                            // Output the TotalHeads property of the disk
-                            Debug.WriteLine($"TotalTracks: {disk["TotalTracks"]}");
-
-                            // Output the TotalHeads property of the disk
-                            Debug.WriteLine($"Partitions: {disk["Partitions"]}");
-
-                            int i = int.Parse(disk["TotalTracks"].ToString());
-
-                            if (i <= 10000000)
-                            {
-                                return "HDD";
-                            }
-                            return "SSD";
-                        }
-                    }
-                }
-            }
-            return "ERROR";
-            */
-
             try
             {
                 var FULLSEARCHER = new ManagementObjectSearcher("root\\Microsoft\\Windows\\Storage", "SELECT * FROM MSFT_PhysicalDisk");
-                foreach (ManagementObject queryObj in FULLSEARCHER.Get())
+                foreach (ManagementObject queryObj in FULLSEARCHER.Get().Cast<ManagementObject>())
                 {
-                    // device id = 0
-                    string MEDIATYPE = queryObj["MediaType"].ToString();
-                    string DEVICEID = queryObj["DeviceID"].ToString();
+                    string? MEDIATYPE = queryObj["MediaType"].ToString();
+                    string? DEVICEID = queryObj["DeviceID"].ToString();
 
                     // Create a ManagementObjectSearcher to query the Win32_DiskDrive class
-                    ManagementObjectSearcher searcher2 = new ManagementObjectSearcher("SELECT * FROM Win32_DiskDrive");
+                    ManagementObjectSearcher searcher2 = new("SELECT * FROM Win32_DiskDrive");
 
-                    foreach (ManagementObject disk in searcher2.Get())
+                    foreach (ManagementObject disk in searcher2.Get().Cast<ManagementObject>())
                     {
                         // Get the device ID of the disk
-                        // device id is \\.\PHYSICALDRIVE0
-                        string deviceID2 = disk["DeviceID"].ToString();
+                        string? deviceID2 = disk["DeviceID"].ToString();
 
                         // Create a ManagementObjectSearcher to query the Win32_LogicalDiskToPartition class
-                        ManagementObjectSearcher partitionSearcher = new ManagementObjectSearcher(
+                        ManagementObjectSearcher partitionSearcher = new(
                             $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{deviceID2}'}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
 
-                        foreach (ManagementObject partition in partitionSearcher.Get())
+                        foreach (ManagementObject partition in partitionSearcher.Get().Cast<ManagementObject>())
                         {
                             // Create a ManagementObjectSearcher to query the Win32_LogicalDisk class
-                            ManagementObjectSearcher logicalDiskSearcher = new ManagementObjectSearcher(
+                            ManagementObjectSearcher logicalDiskSearcher = new(
                                 $"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
 
-                            foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get())
+                            foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get().Cast<ManagementObject>())
                             {
                                 // Check if the logical disk is drive C
                                 if (logicalDisk["DeviceID"].ToString() == driveLetter.Replace(@"\", ""))
                                 {
-                                    if (deviceID2.Contains(DEVICEID))
+                                    if (deviceID2 != null && DEVICEID != null && deviceID2.Contains(DEVICEID))
                                     {
                                         string driveType = MEDIATYPE switch
                                         {
@@ -752,78 +454,16 @@ namespace ReboundDefrag
                             }
                         }
                     }
-
-                    // Get the drive letter associated with the physical disk
-                    /*var partitionSearcher = new ManagementObjectSearcher($"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{deviceID}'}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
-                    foreach (ManagementObject partition in partitionSearcher.Get())
-                    {
-                        var logicalDiskSearcher = new ManagementObjectSearcher($"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
-                        foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get())
-                        {
-                            if (logicalDisk["DeviceID"].ToString().Equals(driveLetter, StringComparison.OrdinalIgnoreCase))
-                            {
-                                string driveType = mediaType switch
-                                {
-                                    "3" => "HDD",
-                                    "4" => "SSD",
-                                    _ => "Unknown"
-                                };
-
-                                Debug.WriteLine($"Drive {driveLetter} is {driveType}");
-                            }
-                        }
-                    }*/
-                }
-
-                Debug.WriteLine($"Drive {driveLetter} not found or not an SSD/HDD.");
-            }
-            catch (ManagementException ex)
-            {
-                Debug.WriteLine($"An error occurred while querying for WMI data: {ex.Message}");
-            }
-
-            return "";
-        }
-
-        public static int? GetTotalHeadsForDrive(string driveLetter)
-        {
-            try
-            {
-                // Get the drive's physical disk associated with the drive letter
-                var drive = driveLetter.TrimEnd('\\');
-                var query = $"SELECT * FROM Win32_LogicalDisk WHERE DeviceID='{driveLetter}'";
-                var searcher = new ManagementObjectSearcher(query);
-
-                foreach (ManagementObject disk in searcher.Get())
-                {
-                    // Retrieve the DeviceID of the physical drive
-                    var deviceId = disk["DeviceID"];
-                    var physicalDriveQuery = $"ASSOCIATORS OF {{Win32_LogicalDisk.DeviceID='{deviceId}'}} WHERE AssocClass=Win32_LogicalDiskToPartition";
-                    var physicalDriveSearcher = new ManagementObjectSearcher(physicalDriveQuery);
-
-                    foreach (ManagementObject partition in physicalDriveSearcher.Get())
-                    {
-                        var diskDriveQuery = $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{partition["Antecedent"].ToString().Split('=')[1].Trim('\"')}'}} WHERE AssocClass=Win32_DiskDrive";
-                        var diskDriveSearcher = new ManagementObjectSearcher(diskDriveQuery);
-
-                        foreach (ManagementObject driveInfo in diskDriveSearcher.Get())
-                        {
-                            // Return the TotalHeads property
-                            return driveInfo["TotalHeads"] != null ? Convert.ToInt32(driveInfo["TotalHeads"]) : (int?)null;
-                        }
-                    }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                // Handle exceptions as needed
-                Console.WriteLine($"An error occurred: {ex.Message}");
-            }
 
-            return null; // Return null if not found
+            }
+            return "Error";
         }
 
-        private async Task<string> GetDeviceIdFromDriveAsync(string driveRoot)
+        private static async Task<string?> GetDeviceIdFromDriveAsync(string driveRoot)
         {
             string driveLetter = driveRoot.TrimEnd('\\'); // Clean the input
 
@@ -832,7 +472,7 @@ namespace ReboundDefrag
                 string query = $"SELECT * FROM Win32_DiskDrive";
                 using (var searcher = new ManagementObjectSearcher(query))
                 {
-                    foreach (ManagementObject logicalDisk in searcher.Get())
+                    foreach (ManagementObject logicalDisk in searcher.Get().Cast<ManagementObject>())
                     {
                         if ((string)logicalDisk["DeviceID"] == await GetDeviceIdFromDriveAsync(driveRoot))
                             return logicalDisk["DeviceID"]?.ToString(); // Return the DeviceID of the disk drive
@@ -842,68 +482,20 @@ namespace ReboundDefrag
             });
         }
 
-        public static int GetDriveIndex(string driveLetter)
+        private static string GetDriveTypeDescriptionAsync(string driveRoot)
         {
-            // Implement logic to retrieve the drive index based on drive letter
-            // You may also need to add logic to handle the GUID case separately if needed.
+            Win32Helper.DriveType driveType = Win32Helper.GetDriveType(driveRoot);
 
-            // Example implementation (needs proper indexing logic):
-            int index = -1;
-            // Query for Disk Drives and find the one matching the drive letter
-            string query = $"SELECT * FROM Win32_DiskDrive";
-            using (var searcher = new ManagementObjectSearcher(query))
+            return driveType switch
             {
-                foreach (ManagementObject drive in searcher.Get())
-                {
-                    // Get the partitions associated with this drive
-                    var partitions = drive.GetRelated("Win32_DiskDriveToDiskPartition");
-                    foreach (ManagementObject partition in partitions)
-                    {
-                        var logicalDisks = partition.GetRelated("Win32_DiskPartition");
-                        foreach (ManagementObject logicalDisk in logicalDisks)
-                        {
-                            if (logicalDisk["DeviceID"].ToString().Equals(driveLetter, StringComparison.OrdinalIgnoreCase))
-                            {
-                                // Here we get the Index property for the drive
-                                index = Convert.ToInt32(drive["Index"]);
-                                break;
-                            }
-                        }
-                        if (index != -1) break;
-                    }
-                    if (index != -1) break;
-                }
-            }
-            return index; // Return the found index, or -1 if not found
-        }
-
-        private async Task<string> GetDriveTypeDescriptionAsync(string driveRoot)
-        {
-            await Task.Delay(500);
-
-            DriveType driveType = GetDriveType(driveRoot);
-
-            switch (driveType)
-            {
-                case DriveType.DRIVE_REMOVABLE:
-                    return "Removable";
-                case DriveType.DRIVE_FIXED:
-                    return GetDiskDriveFromLetter(driveRoot); // Await the asynchronous method
-                case DriveType.DRIVE_REMOTE:
-                    return "Network";
-                case DriveType.DRIVE_CDROM:
-                    return "CD-ROM";
-                case DriveType.DRIVE_RAMDISK:
-                    return "RAM Disk";
-                case DriveType.DRIVE_UNKNOWN:
-                default:
-                    return "Unknown";
-            }
-        }
-
-        private string CheckDriveType(string driveLetter)
-        {
-            return "SSD/HDD";
+                Win32Helper.DriveType.DRIVE_REMOVABLE => "Removable",
+                Win32Helper.DriveType.DRIVE_FIXED => GetDiskDriveFromLetter(driveRoot),
+                Win32Helper.DriveType.DRIVE_REMOTE => "Network",
+                Win32Helper.DriveType.DRIVE_CDROM => "CD-ROM",
+                Win32Helper.DriveType.DRIVE_RAMDISK => "RAM Disk",
+                Win32Helper.DriveType.DRIVE_NO_ROOT_DIR => "No Root Directory",
+                _ => "Unknown",
+            };
         }
 
         private void Button_Click(object sender, SplitButtonClickEventArgs e)
@@ -911,7 +503,7 @@ namespace ReboundDefrag
             OptimizeSelected(AdvancedView.IsOn);
         }
 
-        public void RestartAsAdmin(string args)
+        public static void RestartAsAdmin(string args)
         {
             var packageName = Package.Current.Id.FamilyName;
             var appId = CoreApplication.Id;
@@ -931,13 +523,13 @@ namespace ReboundDefrag
                 Process.Start(startInfo);
                 App.Current.Exit();
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.WriteLine($"Failed to start process as admin: {ex.Message}");
+
             }
         }
 
-        public async void OptimizeSelected(bool systemPartitions, bool delay = true)
+        public async void OptimizeSelected(bool systemPartitions)
         {
             AdvancedView.IsOn = systemPartitions;
 
@@ -947,10 +539,10 @@ namespace ReboundDefrag
                 return;
             }
 
-            foreach (DiskItem item in MyListView.SelectedItems)
+            foreach (DiskItem item in MyListView.SelectedItems.Cast<DiskItem>())
             {
                 string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
-                string volume = item.DriveLetter.ToString().Remove(1, 2);
+                string? volume = item.DriveLetter?.ToString().Remove(1, 2);
                 string arguments = $@"
 $job = Start-Job -ScriptBlock {{
     $global:OutputLines = @()
@@ -1006,7 +598,7 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
                     process.OutputDataReceived += UpdateOutput;
 
-                    async void UpdateOutput(object sender, DataReceivedEventArgs args)
+                    void UpdateOutput(object sender, DataReceivedEventArgs args)
                     {
                         // Only process if there's data
                         if (!string.IsNullOrEmpty(args.Data))

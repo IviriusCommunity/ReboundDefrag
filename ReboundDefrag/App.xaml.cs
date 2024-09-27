@@ -62,7 +62,7 @@ namespace ReboundDefrag
                     await (m_window as MainWindow).LoadData(true);
                     (m_window as MainWindow).MyListView.SelectedIndex = selectedIndex;
                     await Task.Delay(50);
-                    (m_window as MainWindow).OptimizeSelected(true, true);
+                    (m_window as MainWindow).OptimizeSelected(true);
                 }
                 catch (Exception ex)
                 {
