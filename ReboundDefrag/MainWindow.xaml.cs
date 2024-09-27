@@ -1,9 +1,11 @@
+using Markdig.Parsers;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32.SafeHandles;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
@@ -17,6 +19,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Core;
+using Windows.Devices.Enumeration;
+using Windows.Storage;
 using WinUIEx;
 using WinUIEx.Messaging;
 
@@ -27,10 +31,15 @@ namespace ReboundDefrag
         public MainWindow()
         {
             this.InitializeComponent();
-            LoadWindowProperties();
+            //LoadWindowProperties();
         }
 
         public async void LoadWindowProperties()
+        {
+            await LoadAppAsync();
+        }
+
+        public async Task LoadAppAsync()
         {
             // Set window backdrop to Mica for a modern translucent effect
             SystemBackdrop = new MicaBackdrop();
@@ -480,6 +489,14 @@ namespace ReboundDefrag
 
         public async Task LoadData(bool loadSystemPartitions)
         {
+            AnalyzeButton.IsEnabled = false;
+            OptimizeButton.IsEnabled = false;
+            MyListView.IsEnabled = false;
+            AdvancedView.IsEnabled = false;
+            CurrentDisk.Visibility = Visibility.Visible;
+            CurrentDisk.Text = "Loading drive information...";
+            CurrentProgress.IsIndeterminate = true;
+
             List<DiskItem> items = new List<DiskItem>();
 
             // Get the logical drives bitmask
@@ -614,6 +631,13 @@ namespace ReboundDefrag
             MyListView.ItemsSource = items;
 
             MyListView.SelectedIndex = selIndex >= items.Count ? items.Count - 1 : selIndex;
+
+            AnalyzeButton.IsEnabled = true;
+            OptimizeButton.IsEnabled = true;
+            MyListView.IsEnabled = true;
+            AdvancedView.IsEnabled = true;
+            CurrentDisk.Visibility = Visibility.Collapsed;
+            CurrentProgress.IsIndeterminate = false;
         }
 
         private async void LoadDriveTypes()
@@ -628,43 +652,175 @@ namespace ReboundDefrag
             }
         }
 
-        private async Task<string> GetDriveTypeFromWMIAsync(string driveRoot)
+        public static string GetDiskDriveFromLetter(string driveLetter)
         {
-            return await Task.Run(async () =>
+            /*
+            // Create a ManagementObjectSearcher to query the Win32_DiskDrive class
+            ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_DiskDrive");
+
+            foreach (ManagementObject disk in searcher.Get())
             {
-                // Query for physical disks
-                string query = $"SELECT * FROM Win32_DiskDrive";
-                using (var searcher = new ManagementObjectSearcher(query))
+                // Get the device ID of the disk
+                string deviceID = disk["DeviceID"].ToString();
+
+                // Create a ManagementObjectSearcher to query the Win32_LogicalDiskToPartition class
+                ManagementObjectSearcher partitionSearcher = new ManagementObjectSearcher(
+                    $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{deviceID}'}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
+
+                foreach (ManagementObject partition in partitionSearcher.Get())
                 {
-                    foreach (ManagementObject drive in searcher.Get())
+                    // Create a ManagementObjectSearcher to query the Win32_LogicalDisk class
+                    ManagementObjectSearcher logicalDiskSearcher = new ManagementObjectSearcher(
+                        $"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
+
+                    foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get())
                     {
-                        string deviceID = drive["DeviceID"]?.ToString();
-
-                        // Ensure we're checking the correct device
-                        if (deviceID != null && deviceID.StartsWith("\\\\.\\PHYSICALDRIVE") && deviceID == await GetDeviceIdFromDriveAsync(driveRoot))
+                        // Check if the logical disk is drive C
+                        if (logicalDisk["DeviceID"].ToString() == driveLetter.Replace(@"\", ""))
                         {
-                            // Retrieve the TotalHeads property
-                            var totalHeads = drive["TotalHeads"];
-                            if (totalHeads != null)
-                            {
-                                // Convert to an integer
-                                int headsCount = Convert.ToInt32(totalHeads);
+                            // Output the TotalHeads property of the disk
+                            Debug.WriteLine($"TotalCylinders: {disk["TotalCylinders"]}");
+                            // Output the TotalHeads property of the disk
+                            Debug.WriteLine($"TotalHeads: {disk["TotalHeads"]}");
+                            // Output the TotalHeads property of the disk
+                            Debug.WriteLine($"TotalSectors: {disk["TotalSectors"]}");
+                            // Output the TotalHeads property of the disk
+                            Debug.WriteLine($"TotalTracks: {disk["TotalTracks"]}");
 
-                                // Differentiate based on the number of heads
-                                if (headsCount is > 0 and < 16)
+                            // Output the TotalHeads property of the disk
+                            Debug.WriteLine($"Partitions: {disk["Partitions"]}");
+
+                            int i = int.Parse(disk["TotalTracks"].ToString());
+
+                            if (i <= 10000000)
+                            {
+                                return "HDD";
+                            }
+                            return "SSD";
+                        }
+                    }
+                }
+            }
+            return "ERROR";
+            */
+
+            try
+            {
+                var FULLSEARCHER = new ManagementObjectSearcher("root\\Microsoft\\Windows\\Storage", "SELECT * FROM MSFT_PhysicalDisk");
+                foreach (ManagementObject queryObj in FULLSEARCHER.Get())
+                {
+                    // device id = 0
+                    string MEDIATYPE = queryObj["MediaType"].ToString();
+                    string DEVICEID = queryObj["DeviceID"].ToString();
+
+                    // Create a ManagementObjectSearcher to query the Win32_DiskDrive class
+                    ManagementObjectSearcher searcher2 = new ManagementObjectSearcher("SELECT * FROM Win32_DiskDrive");
+
+                    foreach (ManagementObject disk in searcher2.Get())
+                    {
+                        // Get the device ID of the disk
+                        // device id is \\.\PHYSICALDRIVE0
+                        string deviceID2 = disk["DeviceID"].ToString();
+
+                        // Create a ManagementObjectSearcher to query the Win32_LogicalDiskToPartition class
+                        ManagementObjectSearcher partitionSearcher = new ManagementObjectSearcher(
+                            $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{deviceID2}'}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
+
+                        foreach (ManagementObject partition in partitionSearcher.Get())
+                        {
+                            // Create a ManagementObjectSearcher to query the Win32_LogicalDisk class
+                            ManagementObjectSearcher logicalDiskSearcher = new ManagementObjectSearcher(
+                                $"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
+
+                            foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get())
+                            {
+                                // Check if the logical disk is drive C
+                                if (logicalDisk["DeviceID"].ToString() == driveLetter.Replace(@"\", ""))
                                 {
-                                    return "HDD (Hard Disk Drive)"; // Typical HDD head count
-                                }
-                                else if (headsCount >= 255)
-                                {
-                                    return "SSD (Solid State Drive)"; // SSDs may report 255
+                                    if (deviceID2.Contains(DEVICEID))
+                                    {
+                                        string driveType = MEDIATYPE switch
+                                        {
+                                            "3" => "HDD (Hard Disk Drive)",
+                                            "4" => "SSD (Solid State Drive)",
+                                            _ => "Unknown"
+                                        };
+
+                                        return driveType;
+                                    }
                                 }
                             }
                         }
                     }
+
+                    // Get the drive letter associated with the physical disk
+                    /*var partitionSearcher = new ManagementObjectSearcher($"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{deviceID}'}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
+                    foreach (ManagementObject partition in partitionSearcher.Get())
+                    {
+                        var logicalDiskSearcher = new ManagementObjectSearcher($"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
+                        foreach (ManagementObject logicalDisk in logicalDiskSearcher.Get())
+                        {
+                            if (logicalDisk["DeviceID"].ToString().Equals(driveLetter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                string driveType = mediaType switch
+                                {
+                                    "3" => "HDD",
+                                    "4" => "SSD",
+                                    _ => "Unknown"
+                                };
+
+                                Debug.WriteLine($"Drive {driveLetter} is {driveType}");
+                            }
+                        }
+                    }*/
                 }
-                return "Unknown"; // Fallback if not found
-            });
+
+                Debug.WriteLine($"Drive {driveLetter} not found or not an SSD/HDD.");
+            }
+            catch (ManagementException ex)
+            {
+                Debug.WriteLine($"An error occurred while querying for WMI data: {ex.Message}");
+            }
+
+            return "";
+        }
+
+        public static int? GetTotalHeadsForDrive(string driveLetter)
+        {
+            try
+            {
+                // Get the drive's physical disk associated with the drive letter
+                var drive = driveLetter.TrimEnd('\\');
+                var query = $"SELECT * FROM Win32_LogicalDisk WHERE DeviceID='{driveLetter}'";
+                var searcher = new ManagementObjectSearcher(query);
+
+                foreach (ManagementObject disk in searcher.Get())
+                {
+                    // Retrieve the DeviceID of the physical drive
+                    var deviceId = disk["DeviceID"];
+                    var physicalDriveQuery = $"ASSOCIATORS OF {{Win32_LogicalDisk.DeviceID='{deviceId}'}} WHERE AssocClass=Win32_LogicalDiskToPartition";
+                    var physicalDriveSearcher = new ManagementObjectSearcher(physicalDriveQuery);
+
+                    foreach (ManagementObject partition in physicalDriveSearcher.Get())
+                    {
+                        var diskDriveQuery = $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='{partition["Antecedent"].ToString().Split('=')[1].Trim('\"')}'}} WHERE AssocClass=Win32_DiskDrive";
+                        var diskDriveSearcher = new ManagementObjectSearcher(diskDriveQuery);
+
+                        foreach (ManagementObject driveInfo in diskDriveSearcher.Get())
+                        {
+                            // Return the TotalHeads property
+                            return driveInfo["TotalHeads"] != null ? Convert.ToInt32(driveInfo["TotalHeads"]) : (int?)null;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions as needed
+                Console.WriteLine($"An error occurred: {ex.Message}");
+            }
+
+            return null; // Return null if not found
         }
 
         private async Task<string> GetDeviceIdFromDriveAsync(string driveRoot)
@@ -686,7 +842,7 @@ namespace ReboundDefrag
             });
         }
 
-        private int GetDriveIndex(string driveLetter)
+        public static int GetDriveIndex(string driveLetter)
         {
             // Implement logic to retrieve the drive index based on drive letter
             // You may also need to add logic to handle the GUID case separately if needed.
@@ -732,7 +888,7 @@ namespace ReboundDefrag
                 case DriveType.DRIVE_REMOVABLE:
                     return "Removable";
                 case DriveType.DRIVE_FIXED:
-                    return await GetDriveTypeFromWMIAsync(driveRoot); // Await the asynchronous method
+                    return GetDiskDriveFromLetter(driveRoot); // Await the asynchronous method
                 case DriveType.DRIVE_REMOTE:
                     return "Network";
                 case DriveType.DRIVE_CDROM:

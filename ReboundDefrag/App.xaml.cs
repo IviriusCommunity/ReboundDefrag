@@ -49,6 +49,7 @@ namespace ReboundDefrag
             var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
             var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
             m_window.Activate();
+            await (m_window as MainWindow).LoadAppAsync();
 
             string commandArgs = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
 
