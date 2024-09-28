@@ -11,18 +11,18 @@ using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Management;
-using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Core;
+using Windows.Storage;
 using Windows.System;
 using WinUIEx;
 using WinUIEx.Messaging;
-using static ReboundDefrag.Helpers.Win32Helper;
 
 #nullable enable
+#pragma warning disable CA1854 // Prefer the 'IDictionary.TryGetValue(TKey, out TValue)' method
 
 namespace ReboundDefrag
 {
@@ -132,6 +132,7 @@ namespace ReboundDefrag
             public string? DriveLetter { get; set; }
             public string? MediaType { get; set; }
             public int ProgressValue { get; set; }
+            public bool IsChecked { get; set; }
         }
 
         public bool IsAdministrator()
@@ -344,6 +345,7 @@ namespace ReboundDefrag
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveWindows.png";
                             }
+                            item.IsChecked = GetBoolFromLocalSettings(newDriveLetter);
                             items.Add(item);
                         }
                         else
@@ -371,6 +373,7 @@ namespace ReboundDefrag
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveWindows.png";
                             }
+                            item.IsChecked = GetBoolFromLocalSettings(ConvertStringToNumericRepresentation(drive));
                             items.Add(item);
                         }
                     }
@@ -403,6 +406,7 @@ namespace ReboundDefrag
                         MediaType = driveType,
                         DriveLetter = result.GUID,
                     };
+                    if (result.GUID != null) item.IsChecked = GetBoolFromLocalSettings(ConvertStringToNumericRepresentation(result.GUID));
                     items.Add(item);
                 }
             }
@@ -415,6 +419,61 @@ namespace ReboundDefrag
             MyListView.SelectedIndex = selIndex >= items.Count ? items.Count - 1 : selIndex;
 
             Lock(true);
+        }
+
+        public string ConvertStringToNumericRepresentation(string input)
+        {
+            // Create a StringBuilder to store the numeric representation
+            StringBuilder numericRepresentation = new StringBuilder();
+
+            // Iterate over each character in the string
+            foreach (char c in input)
+            {
+                // Convert the character to its ASCII value and append it
+                numericRepresentation.Append(((int)c).ToString());
+            }
+
+            // Return the numeric representation as a string
+            return numericRepresentation.ToString();
+        }
+
+        // Method to read a bool value from LocalSettings
+        public static bool GetBoolFromLocalSettings(string name)
+        {
+            // Access the local settings
+            var localSettings = ApplicationData.Current.LocalSettings;
+
+            // Check if the key exists and return the bool value if it does
+            if (localSettings.Values.ContainsKey(name))
+            {
+                // Try to get the value and cast it to bool
+                if (localSettings.Values[name] is bool value)
+                {
+                    return value;
+                }
+            }
+
+            // Return false if the key does not exist or is not a bool
+            return false;
+        }
+
+        // Method to write a bool value to LocalSettings
+        public static bool WriteBoolToLocalSettings(string name, bool value)
+        {
+            try
+            {
+                // Access the local settings
+                var localSettings = ApplicationData.Current.LocalSettings;
+
+                // Write the bool value to the settings with the given key
+                localSettings.Values[name] = value;
+
+                return true; // Return true if write is successful
+            }
+            catch
+            {
+                return false; // Return false if an error occurs
+            }
         }
 
         public static string GetDiskDriveFromLetter(string driveLetter)
@@ -550,13 +609,17 @@ namespace ReboundDefrag
                 return;
             }
 
-            Lock(false, "Loading...", true);
+            foreach (var item in (List<DiskItem?>)MyListView.ItemsSource)
+            {
+                if (item?.IsChecked == true)
+                {
+                    Lock(false, "Loading...", true);
 
-            DiskItem? item = (MyListView.ItemsSource as List<DiskItem>)?[MyListView.SelectedIndex];
+                    MyListView.SelectedIndex = ((List<DiskItem?>)MyListView.ItemsSource).IndexOf(item);
 
-            string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
-            string? volume = item?.DriveLetter?.ToString().Remove(1, 2);
-            string arguments = $@"
+                    string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
+                    string? volume = item?.DriveLetter?.ToString().Remove(1, 2);
+                    string arguments = $@"
 $job = Start-Job -ScriptBlock {{
     $global:OutputLines = @()
     
@@ -586,106 +649,114 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
 ";
 
-            // Ensure the script is written before proceeding
-            await File.WriteAllTextAsync(scriptPath, arguments);
+                    // Ensure the script is written before proceeding
+                    await File.WriteAllTextAsync(scriptPath, arguments);
 
-            try
-            {
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",  // Use -File to execute the script
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    Verb = "runas"  // Run as administrator
-                };
-
-                using var process = new Process { StartInfo = processInfo };
-
-                string outputData = "0";
-                bool updateData = true;
-
-                var alreadyUsed = new List<string>();
-
-                process.OutputDataReceived += UpdateOutput;
-
-                void UpdateOutput(object sender, DataReceivedEventArgs args)
-                {
-                    // Only process if there's data
-                    if (!string.IsNullOrEmpty(args.Data))
+                    try
                     {
-                        // Use the dispatcher to update the UI
-                        DispatcherQueue.TryEnqueue(() => { UpdateIO(args.Data); });
-
-                        // Store the output data
-                        outputData = "\n" + args.Data;
-                    }
-                }
-
-                process.Start();
-                process.BeginOutputReadLine();
-
-                Lock(false, "", true);
-                LoadSelectedItemInfo("Optimizing...");
-
-                void UpdateIO(string data)
-                {
-                    if (!updateData) return;
-
-                    if (data.Contains("VERBOSE: ") && data.Contains(" complete."))
-                    {
-                        string a = data[data.LastIndexOf("VERBOSE: ")..].Replace("VERBOSE: ", string.Empty);
-
-                        string dataToReplace = " complete.";
-
-                        DispatcherQueue.TryEnqueue(() => { RunUpdate(a, dataToReplace); });
-                    }
-                }
-
-                void RunUpdate(string a, string dataToReplace)
-                {
-                    if (alreadyUsed.Contains(a) != true)
-                    {
-                        alreadyUsed.Add(a);
-                        CurrentProgress.Value = GetMaxPercentage(a);
-                        CurrentProgress.IsIndeterminate = false;
-                        SetProgressState(TaskbarProgressBarState.Normal);
-                        SetProgressValue((int)CurrentProgress.Value, (int)CurrentProgress.Maximum);
-                        if (a.Contains(" complete..."))
+                        if (DetailsBar.Severity == InfoBarSeverity.Error)
                         {
-                            dataToReplace = " complete...";
-                            if (item?.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete..."))}";
-                            else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete..."))}";
+                            LoadSelectedItemInfo("Cannot be optimized. Skipping...");
+                            await Task.Delay(1000);
+                            continue;
                         }
-                        else if (a.Contains(" complete."))
+                        var processInfo = new ProcessStartInfo
                         {
-                            dataToReplace = " complete.";
-                            if (item?.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete."))}";
-                            else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete."))}";
+                            FileName = "powershell.exe",
+                            Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",  // Use -File to execute the script
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true,
+                            Verb = "runas"  // Run as administrator
+                        };
 
+                        using var process = new Process { StartInfo = processInfo };
+
+                        string outputData = "0";
+                        bool updateData = true;
+
+                        var alreadyUsed = new List<string>();
+
+                        process.OutputDataReceived += UpdateOutput;
+
+                        void UpdateOutput(object sender, DataReceivedEventArgs args)
+                        {
+                            // Only process if there's data
+                            if (!string.IsNullOrEmpty(args.Data))
+                            {
+                                // Use the dispatcher to update the UI
+                                DispatcherQueue.TryEnqueue(() => { UpdateIO(args.Data); });
+
+                                // Store the output data
+                                outputData = "\n" + args.Data;
+                            }
                         }
+
+                        process.Start();
+                        process.BeginOutputReadLine();
+
+                        Lock(false, "", true);
+                        LoadSelectedItemInfo("Optimizing...");
+
+                        void UpdateIO(string data)
+                        {
+                            if (!updateData) return;
+
+                            if (data.Contains("VERBOSE: ") && data.Contains(" complete."))
+                            {
+                                string a = data[data.LastIndexOf("VERBOSE: ")..].Replace("VERBOSE: ", string.Empty);
+
+                                string dataToReplace = " complete.";
+
+                                DispatcherQueue.TryEnqueue(() => { RunUpdate(a, dataToReplace); });
+                            }
+                        }
+
+                        void RunUpdate(string a, string dataToReplace)
+                        {
+                            if (alreadyUsed.Contains(a) != true)
+                            {
+                                alreadyUsed.Add(a);
+                                CurrentProgress.Value = GetMaxPercentage(a);
+                                CurrentProgress.IsIndeterminate = false;
+                                SetProgressState(TaskbarProgressBarState.Normal);
+                                SetProgressValue((int)CurrentProgress.Value, (int)CurrentProgress.Maximum);
+                                if (a.Contains(" complete..."))
+                                {
+                                    dataToReplace = " complete...";
+                                    if (item?.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete..."))}";
+                                    else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete..."))}";
+                                }
+                                else if (a.Contains(" complete."))
+                                {
+                                    dataToReplace = " complete.";
+                                    if (item?.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete."))}";
+                                    else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete."))}";
+
+                                }
+                            }
+                        }
+
+                        await process.WaitForExitAsync();
+
+                        updateData = false;
+                        Lock(true);
+                        LoadSelectedItemInfo(GetStatus());
+                        File.Delete(scriptPath);
+                        alreadyUsed.Clear();
+                        CurrentProgress.Value = 0;
+                        SetProgressState(TaskbarProgressBarState.NoProgress);
+                    }
+                    catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+                    {
+                        ShowMessage("Defragmentation was canceled by the user.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ShowMessage($"Error: {ex.Message}");
                     }
                 }
-
-                await process.WaitForExitAsync();
-
-                updateData = false;
-                Lock(true);
-                LoadSelectedItemInfo(GetStatus());
-                File.Delete(scriptPath);
-                alreadyUsed.Clear();
-                CurrentProgress.Value = 0;
-                SetProgressState(TaskbarProgressBarState.NoProgress);
-            }
-            catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
-            {
-                ShowMessage("Defragmentation was canceled by the user.");
-            }
-            catch (Exception ex)
-            {
-                ShowMessage($"Error: {ex.Message}");
             }
         }
 
@@ -933,6 +1004,15 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
         private async void MenuFlyoutItem_Click_2(object sender, RoutedEventArgs e)
         {
             await Launcher.LaunchUriAsync(new Uri("https://ivirius.vercel.app/documentations/rebound11/defragment-and-optimize-drives"));
+        }
+
+        private void CheckBox_Click(object? sender, RoutedEventArgs e)
+        {
+            var name = ((DiskItem?)((CheckBox?)sender)?.DataContext)?.DriveLetter;
+            var isChecked = ((CheckBox?)sender)?.IsChecked;
+            Debug.WriteLine(name == null);
+            Debug.WriteLine(isChecked == null);
+            if (name != null && isChecked != null) WriteBoolToLocalSettings(ConvertStringToNumericRepresentation(name), (bool)isChecked);
         }
     }
 
