@@ -9,14 +9,14 @@
     xmlns:winuiex="using:WinUIEx"
     mc:Ignorable="d" xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals">
     <Grid>
-        <StackPanel Spacing="10" Margin="15, 5, 15, 15">
-            <InfoBar x:FieldModifier="public" x:Name="HeaderInfoBar" IsOpen="True" IsClosable="False" Title="You can optimize your drives to help your computer run more efficiently, or analyze them to find out if they need to be optimized. Only drives on or connected to your computer are shown."/>
+        <StackPanel Spacing="10" Margin="15, 5, 15, 13">
+            <InfoBar x:FieldModifier="public" x:Name="HeaderInfoBar" IsOpen="True" IsClosable="False" Title="You can optimize your drives to help your computer run more efficiently, or analyze them to find out if they need to be optimized. Only drives on or connected to your computer are shown." Message="Hover over a drive in the list to see its full path. Toggle the &quot;Advanced&quot; option to see system partitions."/>
             <ListView x:FieldModifier="public" x:Name="MyListView" SelectionChanged="ListviewSelectionChange" CornerRadius="4"
-                  BorderThickness="1" Height="225" Padding="3" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                  BorderThickness="1" Height="205" Padding="3" HorizontalAlignment="Stretch" VerticalAlignment="Top"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}" SelectedIndex="0" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="True">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" ToolTipService.ToolTip="{Binding DriveLetter}">
                             <Image Source="{Binding ImagePath}" Width="24" Height="24" Margin="0,0,10,0"/>
                             <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
                         </StackPanel>
@@ -327,6 +327,11 @@
                                 <MenuFlyoutItem Text="Optimize all" Click="MenuFlyoutItem_Click_1">
                                     <MenuFlyoutItem.Icon>
                                         <ImageIcon x:Name="Admin3" Source="/Assets/Administrator.png"/>
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Learn more" Click="MenuFlyoutItem_Click_2">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph=""/>
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                             </MenuFlyout>

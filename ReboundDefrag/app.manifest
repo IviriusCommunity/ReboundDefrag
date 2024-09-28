@@ -19,6 +19,7 @@
 	<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
 		<security>
 			<requestedPrivileges>
+				<!-- This will require the app to run as admin -->
 				<requestedExecutionLevel level="asInvoker" uiAccess="false" />
 			</requestedPrivileges>
 		</security>

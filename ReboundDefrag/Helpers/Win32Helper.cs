@@ -1,4 +1,6 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 
 #nullable enable
@@ -7,7 +9,7 @@ using System.Text;
 
 namespace ReboundDefrag.Helpers
 {
-    public static class Win32Helper
+    public static partial class Win32Helper
     {
         public const int WM_DEVICECHANGE = 0x0219;
         public const int DBT_DEVICEARRIVAL = 0x8000;

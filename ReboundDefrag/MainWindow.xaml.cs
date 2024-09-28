@@ -2,6 +2,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.WindowsAPICodePack.Taskbar;
 using ReboundDefrag.Helpers;
 using System;
 using System.Collections.Generic;
@@ -10,13 +11,16 @@ using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Core;
+using Windows.System;
 using WinUIEx;
 using WinUIEx.Messaging;
+using static ReboundDefrag.Helpers.Win32Helper;
 
 #nullable enable
 
@@ -71,6 +75,16 @@ namespace ReboundDefrag
 
             // Check if the application is running with administrator privileges
             IsAdministrator();
+        }
+
+        public static void SetProgressState(TaskbarProgressBarState state)
+        {
+            TaskbarManager.Instance.SetProgressState(state);
+        }
+
+        public static void SetProgressValue(int completed, int total)
+        {
+            TaskbarManager.Instance.SetProgressValue(completed, total);
         }
 
         private async void MessageReceived(object? sender, WindowMessageEventArgs e)
@@ -538,11 +552,11 @@ namespace ReboundDefrag
 
             Lock(false, "Loading...", true);
 
-            foreach (DiskItem item in MyListView.SelectedItems.Cast<DiskItem>())
-            {
-                string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
-                string? volume = item.DriveLetter?.ToString().Remove(1, 2);
-                string arguments = $@"
+            DiskItem? item = (MyListView.ItemsSource as List<DiskItem>)?[MyListView.SelectedIndex];
+
+            string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
+            string? volume = item?.DriveLetter?.ToString().Remove(1, 2);
+            string arguments = $@"
 $job = Start-Job -ScriptBlock {{
     $global:OutputLines = @()
     
@@ -572,103 +586,106 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
 ";
 
-                // Ensure the script is written before proceeding
-                await File.WriteAllTextAsync(scriptPath, arguments);
+            // Ensure the script is written before proceeding
+            await File.WriteAllTextAsync(scriptPath, arguments);
 
-                try
+            try
+            {
+                var processInfo = new ProcessStartInfo
                 {
-                    var processInfo = new ProcessStartInfo
+                    FileName = "powershell.exe",
+                    Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",  // Use -File to execute the script
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    Verb = "runas"  // Run as administrator
+                };
+
+                using var process = new Process { StartInfo = processInfo };
+
+                string outputData = "0";
+                bool updateData = true;
+
+                var alreadyUsed = new List<string>();
+
+                process.OutputDataReceived += UpdateOutput;
+
+                void UpdateOutput(object sender, DataReceivedEventArgs args)
+                {
+                    // Only process if there's data
+                    if (!string.IsNullOrEmpty(args.Data))
                     {
-                        FileName = "powershell.exe",
-                        Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",  // Use -File to execute the script
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        Verb = "runas"  // Run as administrator
-                    };
+                        // Use the dispatcher to update the UI
+                        DispatcherQueue.TryEnqueue(() => { UpdateIO(args.Data); });
 
-                    using var process = new Process { StartInfo = processInfo };
+                        // Store the output data
+                        outputData = "\n" + args.Data;
+                    }
+                }
 
-                    string outputData = "0";
-                    bool updateData = true;
+                process.Start();
+                process.BeginOutputReadLine();
 
-                    var alreadyUsed = new List<string>();
+                Lock(false, "", true);
+                LoadSelectedItemInfo("Optimizing...");
 
-                    process.OutputDataReceived += UpdateOutput;
+                void UpdateIO(string data)
+                {
+                    if (!updateData) return;
 
-                    void UpdateOutput(object sender, DataReceivedEventArgs args)
+                    if (data.Contains("VERBOSE: ") && data.Contains(" complete."))
                     {
-                        // Only process if there's data
-                        if (!string.IsNullOrEmpty(args.Data))
+                        string a = data[data.LastIndexOf("VERBOSE: ")..].Replace("VERBOSE: ", string.Empty);
+
+                        string dataToReplace = " complete.";
+
+                        DispatcherQueue.TryEnqueue(() => { RunUpdate(a, dataToReplace); });
+                    }
+                }
+
+                void RunUpdate(string a, string dataToReplace)
+                {
+                    if (alreadyUsed.Contains(a) != true)
+                    {
+                        alreadyUsed.Add(a);
+                        CurrentProgress.Value = GetMaxPercentage(a);
+                        CurrentProgress.IsIndeterminate = false;
+                        SetProgressState(TaskbarProgressBarState.Normal);
+                        SetProgressValue((int)CurrentProgress.Value, (int)CurrentProgress.Maximum);
+                        if (a.Contains(" complete..."))
                         {
-                            // Use the dispatcher to update the UI
-                            DispatcherQueue.TryEnqueue(() => { UpdateIO(args.Data); });
+                            dataToReplace = " complete...";
+                            if (item?.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete..."))}";
+                            else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete..."))}";
+                        }
+                        else if (a.Contains(" complete."))
+                        {
+                            dataToReplace = " complete.";
+                            if (item?.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete."))}";
+                            else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete."))}";
 
-                            // Store the output data
-                            outputData = "\n" + args.Data;
                         }
                     }
-
-                    process.Start();
-                    process.BeginOutputReadLine();
-
-                    Lock(false, "", false);
-                    LoadSelectedItemInfo("Optimizing...");
-
-                    void UpdateIO(string data)
-                    {
-                        if (!updateData) return;
-
-                        if (data.Contains("VERBOSE: ") && data.Contains(" complete."))
-                        {
-                            string a = data[data.LastIndexOf("VERBOSE: ")..].Replace("VERBOSE: ", string.Empty);
-
-                            string dataToReplace = " complete.";
-
-                            DispatcherQueue.TryEnqueue(() => { RunUpdate(a, dataToReplace); });
-                        }
-                    }
-
-                    void RunUpdate(string a, string dataToReplace)
-                    {
-                        if (alreadyUsed.Contains(a) != true)
-                        {
-                            alreadyUsed.Add(a);
-                            CurrentProgress.Value = GetMaxPercentage(a);
-                            if (a.Contains(" complete..."))
-                            {
-                                dataToReplace = " complete...";
-                                if (item.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete..."))}";
-                                else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete..."))}";
-                            }
-                            else if (a.Contains(" complete."))
-                            {
-                                dataToReplace = " complete.";
-                                if (item.DriveLetter?.ToString().Contains('}') != true) CurrentDisk.Text = $"Drive {volume}: - {a.Remove(a.IndexOf(" complete."))}";
-                                else CurrentDisk.Text = $"{((DiskItem)MyListView.SelectedItem).Name} - {a.Remove(a.IndexOf(" complete."))}";
-
-                            }
-                        }
-                    }
-
-                    await process.WaitForExitAsync();
-
-                    updateData = false;
-                    Lock(true);
-                    LoadSelectedItemInfo(GetStatus());
-                    File.Delete(scriptPath);
-                    alreadyUsed.Clear();
-                    CurrentProgress.Value = 0;
                 }
-                catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
-                {
-                    ShowMessage("Defragmentation was canceled by the user.");
-                }
-                catch (Exception ex)
-                {
-                    ShowMessage($"Error: {ex.Message}");
-                }
+
+                await process.WaitForExitAsync();
+
+                updateData = false;
+                Lock(true);
+                LoadSelectedItemInfo(GetStatus());
+                File.Delete(scriptPath);
+                alreadyUsed.Clear();
+                CurrentProgress.Value = 0;
+                SetProgressState(TaskbarProgressBarState.NoProgress);
+            }
+            catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+            {
+                ShowMessage("Defragmentation was canceled by the user.");
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Error: {ex.Message}");
             }
         }
 
@@ -757,7 +774,10 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
                     if (DetailsBar.Severity == InfoBarSeverity.Error)
                     {
-                        return;
+                        LoadSelectedItemInfo("Cannot be optimized. Skipping...");
+                        await Task.Delay(1000);
+                        if (MyListView.SelectedIndex + 1 != j) MyListView.SelectedIndex++;
+                        continue;
                     }
                         var processInfo = new ProcessStartInfo
                     {
@@ -795,8 +815,8 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
                     process.Start();
                     process.BeginOutputReadLine();
 
+                    Lock(false, "", true);
                     LoadSelectedItemInfo("Optimizing...");
-                    Lock(false, "Optimizing...", false);
 
                     void UpdateIO(string data)
                     {
@@ -817,7 +837,10 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
                         if (alreadyUsed.Contains(a) != true)
                         {
                             alreadyUsed.Add(a);
+                            CurrentProgress.IsIndeterminate = false;
                             CurrentProgress.Value = GetMaxPercentage(a);
+                            SetProgressState(TaskbarProgressBarState.Normal);
+                            SetProgressValue((int)CurrentProgress.Value, (int)CurrentProgress.Maximum);
                             if (a.Contains(" complete..."))
                             {
                                 dataToReplace = " complete...";
@@ -842,6 +865,7 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
                     File.Delete(scriptPath);
                     alreadyUsed.Clear();
                     CurrentProgress.Value = 0;
+                    SetProgressState(TaskbarProgressBarState.NoProgress);
                     if (MyListView.SelectedIndex + 1 != j) MyListView.SelectedIndex++;
                 }
                 catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
@@ -904,6 +928,11 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
         private async void AdvancedView_Toggled(object sender, RoutedEventArgs e)
         {
             await LoadData(AdvancedView.IsOn);
+        }
+
+        private async void MenuFlyoutItem_Click_2(object sender, RoutedEventArgs e)
+        {
+            await Launcher.LaunchUriAsync(new Uri("https://ivirius.vercel.app/documentations/rebound11/defragment-and-optimize-drives"));
         }
     }
 
