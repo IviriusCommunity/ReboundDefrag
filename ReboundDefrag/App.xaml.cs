@@ -25,11 +25,8 @@ namespace ReboundDefrag
                 try
                 {
                     // Extract the index after "SELECTED "
-                    (m_window as MainWindow).AdvancedView.IsOn = true;
-                    await (m_window as MainWindow).LoadData(true);
                     int selectedIndex = int.Parse(commandArgs[(commandArgs.IndexOf("SELECTED-SYSTEM") + 16)..].Trim());
                     (m_window as MainWindow).MyListView.SelectedIndex = selectedIndex;
-                    await Task.Delay(2000);
                     (m_window as MainWindow).OptimizeSelected(true);
                 }
                 catch (Exception ex)
@@ -42,10 +39,8 @@ namespace ReboundDefrag
                 try
                 {
                     // Extract the index after "SELECTED "
-                    await (m_window as MainWindow).LoadData(false);
                     int selectedIndex = int.Parse(commandArgs[(commandArgs.IndexOf("SELECTED") + 9)..].Trim());
                     (m_window as MainWindow).MyListView.SelectedIndex = selectedIndex;
-                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeSelected(false);
                 }
                 catch (Exception ex)
@@ -57,8 +52,6 @@ namespace ReboundDefrag
             {
                 try
                 {
-                    await (m_window as MainWindow).LoadData(true);
-                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeAll(false, true);
                 }
                 catch (Exception ex)
@@ -70,8 +63,6 @@ namespace ReboundDefrag
             {
                 try
                 {
-                    await (m_window as MainWindow).LoadData(false);
-                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeAll(false, false);
                 }
                 catch (Exception ex)
@@ -83,8 +74,6 @@ namespace ReboundDefrag
             {
                 try
                 {
-                    await (m_window as MainWindow).LoadData(true);
-                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeAll(true, true);
                 }
                 catch (Exception ex)
@@ -96,8 +85,6 @@ namespace ReboundDefrag
             {
                 try
                 {
-                    await (m_window as MainWindow).LoadData(false);
-                    await Task.Delay(1000);
                     (m_window as MainWindow).OptimizeAll(true, false);
                 }
                 catch (Exception ex)

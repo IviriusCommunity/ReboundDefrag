@@ -48,6 +48,8 @@ namespace ReboundDefrag
 
         public async Task LoadAppAsync()
         {
+            AdvancedView.IsOn = GetBoolFromLocalSettings("Advanced");
+
             // Load data based on the current state of 'AdvancedView'
             await LoadData(AdvancedView.IsOn);
 
@@ -190,7 +192,7 @@ namespace ReboundDefrag
                 DetailsBar.Title = selectedItem?.Name;
                 DetailsBar.Message = $"Media type: {selectedItem?.MediaType}\nLast analyzed or optimized: {info[..^4]}\nCurrent status: {status}";
                 DetailsBar.Severity = InfoBarSeverity.Informational;
-                OptimizeButton.IsEnabled = true;
+                OptimizeButton.IsEnabled = AdvancedView.IsEnabled;
                 if (status.Contains("Needs optimization"))
                 {
                     DetailsBar.Severity = InfoBarSeverity.Warning;
@@ -786,8 +788,6 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
             await LoadData(systemPartitions);
 
-            Lock(false, "Optimizing...", true);
-
             MyListView.IsEnabled = false;
 
             if (!IsAdministrator())
@@ -804,6 +804,8 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
             foreach (var item in (List<DiskItem>)MyListView.ItemsSource)
             {
+                Lock(false, "Optimizing...", true);
+
                 string scriptPath = "C:\\Rebound11\\rdfrgui.ps1";
                 string? volume = item.DriveLetter?.ToString().Remove(1, 2);
                 string arguments = $@"
@@ -998,6 +1000,7 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         private async void AdvancedView_Toggled(object sender, RoutedEventArgs e)
         {
+            WriteBoolToLocalSettings("Advanced", AdvancedView.IsOn);
             await LoadData(AdvancedView.IsOn);
         }
 
