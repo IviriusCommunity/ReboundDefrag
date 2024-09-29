@@ -423,16 +423,16 @@ namespace ReboundDefrag
             Lock(true);
         }
 
-        public string ConvertStringToNumericRepresentation(string input)
+        public static string ConvertStringToNumericRepresentation(string input)
         {
             // Create a StringBuilder to store the numeric representation
-            StringBuilder numericRepresentation = new StringBuilder();
+            StringBuilder numericRepresentation = new();
 
             // Iterate over each character in the string
             foreach (char c in input)
             {
                 // Convert the character to its ASCII value and append it
-                numericRepresentation.Append(((int)c).ToString());
+                numericRepresentation.Append((int)c);
             }
 
             // Return the numeric representation as a string
@@ -554,7 +554,7 @@ namespace ReboundDefrag
             });
         }
 
-        private static string GetDriveTypeDescriptionAsync(string driveRoot)
+        public static string GetDriveTypeDescriptionAsync(string driveRoot)
         {
             Win32Helper.DriveType driveType = Win32Helper.GetDriveType(driveRoot);
 
@@ -989,8 +989,8 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         private void Button_Click_1(object sender, RoutedEventArgs e)
         {
-            // To do: add automated defragmentation task
-            //CreateModalWindow(this, new TaskWindow(), true, true);
+            var win = new ScheduledOptimization(this.AppWindow.Position.X, this.AppWindow.Position.Y);
+            Win32Helper.CreateModalWindow(this, win, true, true);
         }
 
         private void Button_Click_2(object sender, RoutedEventArgs e)
@@ -1006,15 +1006,13 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         private async void MenuFlyoutItem_Click_2(object sender, RoutedEventArgs e)
         {
-            await Launcher.LaunchUriAsync(new Uri("https://ivirius.vercel.app/documentations/rebound11/defragment-and-optimize-drives"));
+            await Launcher.LaunchUriAsync(new Uri("https://ivirius.vercel.app/documentations/rebound11/defragment-and-optimize-drives/"));
         }
 
         private void CheckBox_Click(object? sender, RoutedEventArgs e)
         {
             var name = ((DiskItem?)((CheckBox?)sender)?.DataContext)?.DriveLetter;
             var isChecked = ((CheckBox?)sender)?.IsChecked;
-            Debug.WriteLine(name == null);
-            Debug.WriteLine(isChecked == null);
             if (name != null && isChecked != null) WriteBoolToLocalSettings(ConvertStringToNumericRepresentation(name), (bool)isChecked);
         }
     }

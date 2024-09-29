@@ -35,6 +35,7 @@
     <None Remove="Assets\DriveWindows.png" />
     <None Remove="Assets\ReboundDefrag.ico" />
     <None Remove="Assets\ReboundDefrag.png" />
+    <None Remove="ScheduledOptimization.xaml" />
   </ItemGroup>
   <ItemGroup>
     <Page Remove="AdminWindow.xaml" />
@@ -80,6 +81,9 @@
     <None Update="AdminWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </None>
+    <Page Update="ScheduledOptimization.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
 
   <!--

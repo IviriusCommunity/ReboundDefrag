@@ -345,7 +345,7 @@
                 <StackPanel Spacing="5">
                     <TextBlock Text="Scheduled optimization" FontWeight="SemiBold"/>
                     <TextBlock Text="Off (Frequency: none)"/>
-                    <Button Width="120" Margin="0, 5, 0, 0" HorizontalAlignment="Right" Click="Button_Click_1" IsEnabled="False" ToolTipService.ToolTip="Change automatic optimization task settings.">
+                    <Button Width="120" Margin="0, 5, 0, 0" HorizontalAlignment="Right" Click="Button_Click_1" ToolTipService.ToolTip="Change scheduled optimization task settings.">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Image x:Name="Admin4" Source="/Assets/Administrator.png" Width="20"/>
                             <TextBlock Text="Turn on"/>
