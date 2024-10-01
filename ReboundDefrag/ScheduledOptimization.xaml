@@ -17,7 +17,7 @@
         </Grid.RowDefinitions>
         <StackPanel Spacing="10" Margin="15, 5">
             <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="Rebound Defragment and Optimize Drives will replace the default Windows scheduled optimization task's arguments, making the Windows Defragment and Optimize Drives app prompt for task recovery. This is because Rebound 11 uses newer and safer methods for this automated task."/>
-            <ToggleSwitch OffContent="Disabled" OnContent="Enabled"/>
+            <ToggleSwitch x:Name="EnableTaskSwitch" OffContent="Disabled" OnContent="Enabled" Toggled="EnableTaskSwitch_Toggled"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -25,14 +25,14 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Frequency" VerticalAlignment="Center"/>
-                <ComboBox SelectedIndex="0" Grid.Column="2" HorizontalAlignment="Stretch">
+                <ComboBox x:Name="Frequency" SelectedIndex="0" Grid.Column="2" HorizontalAlignment="Stretch">
                     <ComboBoxItem Content="Daily"/>
                     <ComboBoxItem Content="Weekly"/>
                     <ComboBoxItem Content="Monthly"/>
                 </ComboBox>
             </Grid>
             <TextBlock Text="Drives" VerticalAlignment="Center"/>
-            <CheckBox Content="Select all" IsChecked="{x:Null}"/>
+            <CheckBox IsEnabled="False" Content="Select all" IsChecked="{x:Null}"/>
         </StackPanel>
         <ListView x:Name="MyListView" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.Row="1" Margin="15, 0, 15, 50" CornerRadius="4"
                   BorderThickness="1" Padding="3" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="True"
@@ -47,7 +47,7 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <CheckBox Content="Optimize new drives" Grid.Row="1" VerticalAlignment="Bottom" Margin="15, 10"/>
+        <CheckBox x:Name="OptimizeNew" IsChecked="True" Content="Optimize new drives" Grid.Row="1" VerticalAlignment="Bottom" Margin="15, 10"/>
         <Border Grid.ColumnSpan="2" Grid.Row="2" Height="75" Background="{ThemeResource SystemControlBackgroundAltMediumLowBrush}" VerticalAlignment="Bottom"/>
         <Grid Grid.ColumnSpan="2" Grid.Row="2" Margin="20, 0">
             <Grid.ColumnDefinitions>
@@ -57,8 +57,8 @@
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Center" Content="Apply" Style="{ThemeResource AccentButtonStyle}"/>
-            <Button Grid.Column="4" HorizontalAlignment="Stretch" VerticalAlignment="Center" Content="Cancel"/>
+            <Button Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Center" Content="Apply" Click="Button_Click" Style="{ThemeResource AccentButtonStyle}"/>
+            <Button Grid.Column="4" HorizontalAlignment="Stretch" VerticalAlignment="Center" Content="Cancel" Click="Button_Click_1"/>
         </Grid>
     </Grid>
 </winuiex:WindowEx>

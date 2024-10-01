@@ -20,6 +20,17 @@ namespace ReboundDefrag
 
             string commandArgs = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
 
+            if (commandArgs.Contains("TASK"))
+            {
+                try
+                {
+                    (m_window as MainWindow).OpenTaskWindow();
+                }
+                catch (Exception ex)
+                {
+                    await (m_window as MainWindow).ShowMessageDialogAsync(ex.Message);
+                }
+            }
             if (commandArgs.Contains("SELECTED-SYSTEM"))
             {
                 try

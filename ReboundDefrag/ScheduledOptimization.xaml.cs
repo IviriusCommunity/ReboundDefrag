@@ -1,11 +1,17 @@
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Win32.TaskScheduler;
 using ReboundDefrag.Helpers;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Security.Cryptography.Xml;
+using System.Security.RightsManagement;
 using System.Text;
 using System.Threading.Tasks;
 using WinUIEx;
 using static ReboundDefrag.MainWindow;
+using Task = System.Threading.Tasks.Task;
 
 namespace ReboundDefrag
 {
@@ -23,6 +29,129 @@ namespace ReboundDefrag
             SystemBackdrop = new MicaBackdrop();
             AppWindow.DefaultTitleBarShouldMatchAppModeTheme = true;
             LoadData();
+            if (GetTaskFrequency() is not "Off")
+            {
+                EnableTaskSwitch.IsOn = true;
+                if (GetTaskFrequency().Contains("Daily"))
+                {
+                    Frequency.SelectedIndex = 0;
+                }
+                if (GetTaskFrequency().Contains("Weekly"))
+                {
+                    Frequency.SelectedIndex = 1;
+                }
+                if (GetTaskFrequency().Contains("Monthly"))
+                {
+                    Frequency.SelectedIndex = 2;
+                }
+            }
+            CheckIsOn();
+        }
+
+        public static void ScheduleDefragTask(List<DiskItem> items, bool optimizeNewDrives, string scheduleFrequency)
+        {
+            using (TaskService ts = new())
+            {
+                // Create or open the Defrag folder in Task Scheduler
+                TaskFolder defragFolder = ts.GetFolder(@"\Microsoft\Windows\Defrag");
+
+                // Retrieve the ScheduledDefrag task if it exists
+                Microsoft.Win32.TaskScheduler.Task scheduledDefrag = defragFolder.GetTasks()["ScheduledDefrag"];
+
+                // If the task exists, we'll modify it
+                TaskDefinition td;
+                if (scheduledDefrag != null)
+                {
+                    td = scheduledDefrag.Definition;
+                }
+                else
+                {
+                    td = ts.NewTask();
+                    td.RegistrationInfo.Description = "Scheduled Defrag Task";
+                    td.Settings.Priority = ProcessPriorityClass.High;
+                    td.Settings.Volatile = false;
+                    td.Settings.RunOnlyIfLoggedOn = false;
+                    scheduledDefrag.Enabled = true;
+                }
+
+                // Set triggers based on the scheduleFrequency input
+                td.Triggers.Clear();
+                switch (scheduleFrequency.ToLower())
+                {
+                    case "daily":
+                        td.Triggers.Add(new DailyTrigger { DaysInterval = 1 });
+                        break;
+                    case "weekly":
+                        td.Triggers.Add(new WeeklyTrigger { DaysOfWeek = DaysOfTheWeek.Sunday });
+                        break;
+                    case "monthly":
+                        td.Triggers.Add(new MonthlyTrigger { DaysOfMonth = [1] });
+                        break;
+                    default:
+                        throw new ArgumentException("Invalid schedule frequency");
+                }
+
+                // Build the defrag command with selected drives
+                if (optimizeNewDrives == true)
+                {
+                    List<string> drives = [];
+                    foreach (DiskItem disk in items)
+                    {
+                        if (disk.IsChecked == false)
+                        {
+                            drives.Add(disk.DriveLetter);
+                        }
+                    }
+                    string defragCommand = string.Join(" ", drives);
+                    td.Actions.Clear();
+                    td.Actions.Add(new ExecAction("defrag.exe", $"/E {defragCommand}", null));  // Optimizing the drives
+                }
+                else
+                {
+                    List<string> drives = [];
+                    foreach (DiskItem disk in items)
+                    {
+                        if (disk.IsChecked == true)
+                        {
+                            string letter;
+                            if (disk.DriveLetter.EndsWith('\\'))
+                            {
+                                letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                            }
+                            else
+                            {
+                                letter = disk.DriveLetter;
+                            }
+                            drives.Add(letter);
+                        }
+                    }
+                    string defragCommand = string.Join(" ", drives);
+                    td.Actions.Clear();
+                    td.Actions.Add(new ExecAction("defrag.exe", $"{defragCommand} /O", null));  // Optimizing the drives
+                }
+
+                // Register or update the task
+                defragFolder.RegisterTaskDefinition("ScheduledDefrag", td);
+
+                // Retrieve the ScheduledDefrag task if it exists
+                Microsoft.Win32.TaskScheduler.Task newScheduledDefrag = defragFolder.GetTasks()["ScheduledDefrag"];
+
+                newScheduledDefrag.Enabled = true;
+            }
+        }
+
+        public static void TurnOffDefragTask()
+        {
+            using (TaskService ts = new())
+            {
+                // Create or open the Defrag folder in Task Scheduler
+                TaskFolder defragFolder = ts.GetFolder(@"\Microsoft\Windows\Defrag");
+
+                // Retrieve the ScheduledDefrag task if it exists
+                Microsoft.Win32.TaskScheduler.Task scheduledDefrag = defragFolder.GetTasks()["ScheduledDefrag"];
+
+                scheduledDefrag.Enabled = false;
+            }
         }
 
         public async void LoadData()
@@ -79,7 +208,6 @@ namespace ReboundDefrag
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveWindows.png";
                             }
-                            item.IsChecked = GetBoolFromLocalSettings(newDriveLetter);
                             items.Add(item);
                         }
                         else
@@ -123,6 +251,37 @@ namespace ReboundDefrag
             MyListView.ItemsSource = items;
 
             MyListView.SelectedIndex = selIndex >= items.Count ? items.Count - 1 : selIndex;
+        }
+
+        private void Button_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            if (EnableTaskSwitch.IsOn == true)
+            {
+                ScheduleDefragTask((List<DiskItem>)MyListView.ItemsSource, (bool)OptimizeNew.IsChecked, (Frequency.SelectedItem as ComboBoxItem).Content.ToString());
+                Close();
+                return;
+            }
+            else
+            {
+                TurnOffDefragTask();
+                Close();
+                return;
+            }
+        }
+
+        private void Button_Click_1(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void EnableTaskSwitch_Toggled(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            CheckIsOn();
+        }
+
+        public void CheckIsOn()
+        {
+            MyListView.IsEnabled = Frequency.IsEnabled = OptimizeNew.IsEnabled = EnableTaskSwitch.IsOn;
         }
     }
 }

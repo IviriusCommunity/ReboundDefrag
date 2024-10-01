@@ -2,6 +2,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Win32.TaskScheduler;
 using Microsoft.WindowsAPICodePack.Taskbar;
 using ReboundDefrag.Helpers;
 using System;
@@ -20,6 +21,7 @@ using Windows.Storage;
 using Windows.System;
 using WinUIEx;
 using WinUIEx.Messaging;
+using Task = System.Threading.Tasks.Task;
 
 #nullable enable
 #pragma warning disable CA1854 // Prefer the 'IDictionary.TryGetValue(TKey, out TValue)' method
@@ -77,6 +79,7 @@ namespace ReboundDefrag
 
             // Check if the application is running with administrator privileges
             IsAdministrator();
+            CheckTask();
         }
 
         public static void SetProgressState(TaskbarProgressBarState state)
@@ -989,6 +992,40 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         private void Button_Click_1(object sender, RoutedEventArgs e)
         {
+            if (IsAdministrator() != true)
+            {
+                RestartAsAdmin($"TASK");
+                return;
+            }
+
+            OpenTaskWindow();
+        }
+
+        public async void CheckTask()
+        {
+            await Task.Delay(100);
+            try
+            {
+                ScheduledOptimizationDetails.Text = GetTaskFrequency();
+                if (GetTaskFrequency() is not "Off")
+                {
+                    ScheduledTaskText.Text = "Configure";
+                }
+                else
+                {
+                    ScheduledTaskText.Text = "Turn on";
+                }
+
+                CheckTask();
+            }
+            catch
+            {
+
+            }
+        }
+
+        public void OpenTaskWindow()
+        {
             var win = new ScheduledOptimization(this.AppWindow.Position.X, this.AppWindow.Position.Y);
             Win32Helper.CreateModalWindow(this, win, true, true);
         }
@@ -1014,6 +1051,46 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
             var name = ((DiskItem?)((CheckBox?)sender)?.DataContext)?.DriveLetter;
             var isChecked = ((CheckBox?)sender)?.IsChecked;
             if (name != null && isChecked != null) WriteBoolToLocalSettings(ConvertStringToNumericRepresentation(name), (bool)isChecked);
+        }
+
+        public static string GetTaskFrequency()
+        {
+            using (TaskService ts = new TaskService())
+            {
+                // Specify the path to the task in Task Scheduler
+                TaskFolder defragFolder = ts.GetFolder(@"Microsoft\Windows\Defrag");
+
+                // Retrieve the scheduled task
+                Microsoft.Win32.TaskScheduler.Task task = defragFolder.GetTasks()["ScheduledDefrag"];
+
+                if (task.Enabled != true)
+                {
+                    return $"Off";
+                }
+
+                if (task != null)
+                {
+                    // Check the triggers for their type
+                    foreach (var trigger in task.Definition.Triggers)
+                    {
+                        switch (trigger)
+                        {
+                            case DailyTrigger _:
+                                return "On (Frequency: daily)";
+                            case WeeklyTrigger _:
+                                return "On (Frequency: weekly)";
+                            case MonthlyTrigger _:
+                                return "On (Frequency: monthly)";
+                        }
+                    }
+
+                    return "On (Frequency: unknown)";
+                }
+                else
+                {
+                    return $"Off";
+                }
+            }
         }
     }
 
