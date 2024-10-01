@@ -99,7 +99,16 @@ namespace ReboundDefrag
                     {
                         if (disk.IsChecked == false)
                         {
-                            drives.Add(disk.DriveLetter);
+                            string letter;
+                            if (disk.DriveLetter.EndsWith('\\'))
+                            {
+                                letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                            }
+                            else
+                            {
+                                letter = disk.DriveLetter;
+                            }
+                            drives.Add(letter);
                         }
                     }
                     string defragCommand = string.Join(" ", drives);
