@@ -32,20 +32,75 @@ namespace ReboundDefrag
             if (GetTaskFrequency() is not "Off")
             {
                 EnableTaskSwitch.IsOn = true;
-                if (GetTaskFrequency().Contains("Daily"))
+                if (GetTaskFrequency().ToLower().Contains("daily"))
                 {
                     Frequency.SelectedIndex = 0;
                 }
-                if (GetTaskFrequency().Contains("Weekly"))
+                if (GetTaskFrequency().ToLower().Contains("weekly"))
                 {
                     Frequency.SelectedIndex = 1;
                 }
-                if (GetTaskFrequency().Contains("Monthly"))
+                if (GetTaskFrequency().ToLower().Contains("monthly"))
                 {
                     Frequency.SelectedIndex = 2;
                 }
             }
             CheckIsOn();
+            CheckData();
+        }
+
+        public async void CheckData()
+        {
+            await Task.Delay(500);
+
+            if (GetTaskCommand().Contains("/E"))
+            {
+                OptimizeNew.IsChecked = true;
+                foreach (var disk in (List<DiskItem>)MyListView.ItemsSource)
+                {
+                    string letter;
+                    if (disk.DriveLetter.EndsWith('\\'))
+                    {
+                        letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                    }
+                    else
+                    {
+                        letter = disk.DriveLetter;
+                    }
+                    if (GetTaskCommand().Contains(letter))
+                    {
+                        disk.IsChecked = false;
+                    }
+                    else
+                    {
+                        disk.IsChecked = true;
+                    }
+                }
+            }
+            else
+            {
+                OptimizeNew.IsChecked = false;
+                foreach (var disk in (List<DiskItem>)MyListView.ItemsSource)
+                {
+                    string letter;
+                    if (disk.DriveLetter.EndsWith('\\'))
+                    {
+                        letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                    }
+                    else
+                    {
+                        letter = disk.DriveLetter;
+                    }
+                    if (GetTaskCommand().Contains(letter))
+                    {
+                        disk.IsChecked = true;
+                    }
+                    else
+                    {
+                        disk.IsChecked = false;
+                    }
+                }
+            }
         }
 
         public static void ScheduleDefragTask(List<DiskItem> items, bool optimizeNewDrives, string scheduleFrequency)

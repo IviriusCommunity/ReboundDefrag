@@ -1092,6 +1092,36 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
                 }
             }
         }
+
+        public static string GetTaskCommand()
+        {
+            using (TaskService ts = new TaskService())
+            {
+                // Specify the path to the task in Task Scheduler
+                TaskFolder defragFolder = ts.GetFolder(@"Microsoft\Windows\Defrag");
+
+                // Retrieve the scheduled task
+                Microsoft.Win32.TaskScheduler.Task task = defragFolder.GetTasks()["ScheduledDefrag"];
+
+                if (task != null)
+                {
+                    // Check the triggers for their type
+                    foreach (var action in task.Definition.Actions)
+                    {
+                        if (action is ExecAction ex)
+                        {
+                            return ex.Arguments;
+                        }
+                    }
+
+                    return "None";
+                }
+                else
+                {
+                    return $"None";
+                }
+            }
+        }
     }
 
     public class DefragInfo
