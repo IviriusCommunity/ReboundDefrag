@@ -32,7 +32,7 @@
                 </ComboBox>
             </Grid>
             <TextBlock Text="Drives" VerticalAlignment="Center"/>
-            <CheckBox IsEnabled="False" Content="Select all" IsChecked="{x:Null}"/>
+            <CheckBox Click="CheckBox_Checked_1" x:Name="SelectAllBox" Content="Select all"/>
         </StackPanel>
         <ListView x:Name="MyListView" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.Row="1" Margin="15, 0, 15, 50" CornerRadius="4"
                   BorderThickness="1" Padding="3" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="True"
@@ -40,7 +40,7 @@
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal" ToolTipService.ToolTip="{Binding DriveLetter}">
-                        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" MinWidth="0" Width="35"/>
+                        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" Click="CheckBox_Checked" MinWidth="0" Width="35"/>
                         <Image Source="{Binding ImagePath}" Width="24" Height="24" Margin="0,0,10,0"/>
                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
                     </StackPanel>

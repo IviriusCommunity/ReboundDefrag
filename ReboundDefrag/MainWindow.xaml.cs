@@ -37,7 +37,7 @@ namespace ReboundDefrag
             SystemBackdrop = new MicaBackdrop();
 
             // Set the window title
-            Title = "Optimize Drives - ALPHA v0.0.3";
+            Title = "Optimize Drives - Beta v0.1.0";
 
             // Window customization
             IsMaximizable = false;
@@ -1043,7 +1043,7 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         private async void MenuFlyoutItem_Click_2(object sender, RoutedEventArgs e)
         {
-            await Launcher.LaunchUriAsync(new Uri("https://ivirius.vercel.app/documentations/rebound11/defragment-and-optimize-drives/"));
+            await Launcher.LaunchUriAsync(new Uri("https://ivirius.vercel.app/docs/rebound11/defragment-and-optimize-drives/"));
         }
 
         private void CheckBox_Click(object? sender, RoutedEventArgs e)
@@ -1055,7 +1055,7 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         public static string GetTaskFrequency()
         {
-            using (TaskService ts = new TaskService())
+            using (TaskService ts = new())
             {
                 // Specify the path to the task in Task Scheduler
                 TaskFolder defragFolder = ts.GetFolder(@"Microsoft\Windows\Defrag");
@@ -1095,7 +1095,7 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
 
         public static string GetTaskCommand()
         {
-            using (TaskService ts = new TaskService())
+            using (TaskService ts = new())
             {
                 // Specify the path to the task in Task Scheduler
                 TaskFolder defragFolder = ts.GetFolder(@"Microsoft\Windows\Defrag");

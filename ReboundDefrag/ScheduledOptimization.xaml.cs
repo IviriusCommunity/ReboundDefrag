@@ -5,13 +5,12 @@ using ReboundDefrag.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Security.Cryptography.Xml;
-using System.Security.RightsManagement;
 using System.Text;
-using System.Threading.Tasks;
 using WinUIEx;
 using static ReboundDefrag.MainWindow;
 using Task = System.Threading.Tasks.Task;
+
+#nullable enable
 
 namespace ReboundDefrag
 {
@@ -32,15 +31,15 @@ namespace ReboundDefrag
             if (GetTaskFrequency() is not "Off")
             {
                 EnableTaskSwitch.IsOn = true;
-                if (GetTaskFrequency().ToLower().Contains("daily"))
+                if (GetTaskFrequency().Contains("daily", StringComparison.CurrentCultureIgnoreCase))
                 {
                     Frequency.SelectedIndex = 0;
                 }
-                if (GetTaskFrequency().ToLower().Contains("weekly"))
+                if (GetTaskFrequency().Contains("weekly", StringComparison.CurrentCultureIgnoreCase))
                 {
                     Frequency.SelectedIndex = 1;
                 }
-                if (GetTaskFrequency().ToLower().Contains("monthly"))
+                if (GetTaskFrequency().Contains("monthly", StringComparison.CurrentCultureIgnoreCase))
                 {
                     Frequency.SelectedIndex = 2;
                 }
@@ -58,16 +57,16 @@ namespace ReboundDefrag
                 OptimizeNew.IsChecked = true;
                 foreach (var disk in (List<DiskItem>)MyListView.ItemsSource)
                 {
-                    string letter;
-                    if (disk.DriveLetter.EndsWith('\\'))
+                    string? letter;
+                    if (disk.DriveLetter != null && disk.DriveLetter.EndsWith('\\'))
                     {
-                        letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                        letter = disk.DriveLetter[..^1];
                     }
                     else
                     {
                         letter = disk.DriveLetter;
                     }
-                    if (GetTaskCommand().Contains(letter))
+                    if (letter != null && GetTaskCommand().Contains(letter))
                     {
                         disk.IsChecked = false;
                     }
@@ -82,16 +81,16 @@ namespace ReboundDefrag
                 OptimizeNew.IsChecked = false;
                 foreach (var disk in (List<DiskItem>)MyListView.ItemsSource)
                 {
-                    string letter;
-                    if (disk.DriveLetter.EndsWith('\\'))
+                    string? letter;
+                    if (disk.DriveLetter != null && disk.DriveLetter.EndsWith('\\'))
                     {
-                        letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                        letter = disk.DriveLetter[..^1];
                     }
                     else
                     {
                         letter = disk.DriveLetter;
                     }
-                    if (GetTaskCommand().Contains(letter))
+                    if (letter != null && GetTaskCommand().Contains(letter))
                     {
                         disk.IsChecked = true;
                     }
@@ -101,6 +100,7 @@ namespace ReboundDefrag
                     }
                 }
             }
+            CheckSelectAll();
         }
 
         public static void ScheduleDefragTask(List<DiskItem> items, bool optimizeNewDrives, string scheduleFrequency)
@@ -126,7 +126,6 @@ namespace ReboundDefrag
                     td.Settings.Priority = ProcessPriorityClass.High;
                     td.Settings.Volatile = false;
                     td.Settings.RunOnlyIfLoggedOn = false;
-                    scheduledDefrag.Enabled = true;
                 }
 
                 // Set triggers based on the scheduleFrequency input
@@ -154,21 +153,21 @@ namespace ReboundDefrag
                     {
                         if (disk.IsChecked == false)
                         {
-                            string letter;
-                            if (disk.DriveLetter.EndsWith('\\'))
+                            string? letter;
+                            if (disk.DriveLetter != null && disk.DriveLetter.EndsWith('\\'))
                             {
-                                letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                                letter = disk.DriveLetter[..^1];
                             }
                             else
                             {
                                 letter = disk.DriveLetter;
                             }
-                            drives.Add(letter);
+                            if (letter != null) drives.Add(letter);
                         }
                     }
                     string defragCommand = string.Join(" ", drives);
                     td.Actions.Clear();
-                    td.Actions.Add(new ExecAction("defrag.exe", $"/E {defragCommand}", null));  // Optimizing the drives
+                    td.Actions.Add(new ExecAction("%SystemRoot%\\System32\\defrag.exe", $"/E {defragCommand}", null));  // Optimizing the drives
                 }
                 else
                 {
@@ -177,21 +176,21 @@ namespace ReboundDefrag
                     {
                         if (disk.IsChecked == true)
                         {
-                            string letter;
-                            if (disk.DriveLetter.EndsWith('\\'))
+                            string? letter;
+                            if (disk.DriveLetter != null && disk.DriveLetter.EndsWith('\\'))
                             {
-                                letter = disk.DriveLetter.Substring(0, disk.DriveLetter.Length - 1);
+                                letter = disk.DriveLetter[..^1];
                             }
                             else
                             {
                                 letter = disk.DriveLetter;
                             }
-                            drives.Add(letter);
+                            if (letter != null) drives.Add(letter);
                         }
                     }
                     string defragCommand = string.Join(" ", drives);
                     td.Actions.Clear();
-                    td.Actions.Add(new ExecAction("defrag.exe", $"{defragCommand} /O", null));  // Optimizing the drives
+                    td.Actions.Add(new ExecAction("%SystemRoot%\\System32\\defrag.exe", $"{defragCommand} /O", null));  // Optimizing the drives
                 }
 
                 // Register or update the task
@@ -319,9 +318,14 @@ namespace ReboundDefrag
 
         private void Button_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
         {
+            OptimizeNew.IsChecked ??= true;
+
+            var frequencyItem = Frequency.SelectedItem as ComboBoxItem;
+            string frequencyContent = frequencyItem?.Content?.ToString() ?? string.Empty;
+
             if (EnableTaskSwitch.IsOn == true)
             {
-                ScheduleDefragTask((List<DiskItem>)MyListView.ItemsSource, (bool)OptimizeNew.IsChecked, (Frequency.SelectedItem as ComboBoxItem).Content.ToString());
+                ScheduleDefragTask((List<DiskItem>?)MyListView.ItemsSource ?? [], OptimizeNew.IsChecked ?? false, frequencyContent);
                 Close();
                 return;
             }
@@ -345,7 +349,76 @@ namespace ReboundDefrag
 
         public void CheckIsOn()
         {
-            MyListView.IsEnabled = Frequency.IsEnabled = OptimizeNew.IsEnabled = EnableTaskSwitch.IsOn;
+            MyListView.IsEnabled = Frequency.IsEnabled = OptimizeNew.IsEnabled = SelectAllBox.IsEnabled = EnableTaskSwitch.IsOn;
+        }
+
+        private async void CheckBox_Checked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            await Task.Delay(50);
+            CheckSelectAll();
+        }
+
+        public void CheckSelectAll()
+        {
+            int checkedItems = 0;
+            foreach (var item in (List<DiskItem>)MyListView.ItemsSource)
+            {
+                if (item.IsChecked == true)
+                    checkedItems++;
+            }
+            if (checkedItems == ((List<DiskItem>)MyListView.ItemsSource).Count)
+            {
+                SelectAllBox.IsChecked = true;
+                return;
+            }
+            else if (checkedItems == 0)
+            {
+                SelectAllBox.IsChecked = false;
+                return;
+            }
+            else
+            {
+                SelectAllBox.IsChecked = null;
+                return;
+            }
+        }
+
+        private async void CheckBox_Checked_1(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            await Task.Delay(50);
+            List<DiskItem> list = [];
+            if (SelectAllBox.IsChecked == true)
+            {
+                foreach (var item in (List<DiskItem>)MyListView.ItemsSource)
+                {
+                    list.Add(new()
+                    {
+                        DriveLetter = item.DriveLetter,
+                        ImagePath = item.ImagePath,
+                        IsChecked = true,
+                        MediaType = item.MediaType,
+                        Name = item.Name,
+                        ProgressValue = item.ProgressValue,
+                    });
+                }
+            }
+            else if (SelectAllBox.IsChecked == false)
+            {
+                foreach (var item in (List<DiskItem>)MyListView.ItemsSource)
+                {
+                    list.Add(new()
+                    {
+                        DriveLetter = item.DriveLetter,
+                        ImagePath = item.ImagePath,
+                        IsChecked = false,
+                        MediaType = item.MediaType,
+                        Name = item.Name,
+                        ProgressValue = item.ProgressValue,
+                    });
+                }
+            }
+            MyListView.ItemsSource = list;
+            CheckSelectAll();
         }
     }
 }

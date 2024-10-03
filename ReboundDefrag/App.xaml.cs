@@ -1,7 +1,6 @@
 ﻿using Microsoft.UI.Xaml;
 using System;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace ReboundDefrag
 {
