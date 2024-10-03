@@ -1122,6 +1122,12 @@ Receive-Job -Id $job.Id | ForEach-Object {{ Write-Output $_ }}
                 }
             }
         }
+
+        private void MenuFlyoutItem_Click_3(object sender, RoutedEventArgs e)
+        {
+            Process.Start("dfrgui.exe");
+            Close();
+        }
     }
 
     public class DefragInfo

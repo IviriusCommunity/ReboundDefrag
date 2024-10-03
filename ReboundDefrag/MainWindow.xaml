@@ -320,7 +320,7 @@
                         </StackPanel>
                         <SplitButton.Flyout>
                             <MenuFlyout>
-                                <MenuFlyoutItem Text="Optimize selected drive" Click="MenuFlyoutItem_Click">
+                                <MenuFlyoutItem Text="Optimize selected drives" Click="MenuFlyoutItem_Click">
                                     <MenuFlyoutItem.Icon>
                                         <ImageIcon x:Name="Admin2" Source="/Assets/Administrator.png"/>
                                     </MenuFlyoutItem.Icon>
@@ -328,6 +328,11 @@
                                 <MenuFlyoutItem Text="Optimize all" Click="MenuFlyoutItem_Click_1">
                                     <MenuFlyoutItem.Icon>
                                         <ImageIcon x:Name="Admin3" Source="/Assets/Administrator.png"/>
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Launch legacy app" Click="MenuFlyoutItem_Click_3">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph=""/>
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="Learn more" Click="MenuFlyoutItem_Click_2">
