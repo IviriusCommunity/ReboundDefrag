@@ -320,12 +320,12 @@
                         </StackPanel>
                         <SplitButton.Flyout>
                             <MenuFlyout>
-                                <MenuFlyoutItem Text="Optimize selected drives" Click="MenuFlyoutItem_Click">
+                                <MenuFlyoutItem x:Name="OptimizeItem" Text="Optimize selected drives" Click="MenuFlyoutItem_Click">
                                     <MenuFlyoutItem.Icon>
                                         <ImageIcon x:Name="Admin2" Source="/Assets/Administrator.png"/>
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="Optimize all" Click="MenuFlyoutItem_Click_1">
+                                <MenuFlyoutItem x:Name="OptimizeAllItem" Text="Optimize all" Click="MenuFlyoutItem_Click_1">
                                     <MenuFlyoutItem.Icon>
                                         <ImageIcon x:Name="Admin3" Source="/Assets/Administrator.png"/>
                                     </MenuFlyoutItem.Icon>
