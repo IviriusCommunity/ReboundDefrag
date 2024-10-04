@@ -350,7 +350,7 @@ namespace ReboundDefrag
                             {
                                 item.ImagePath = "ms-appx:///Assets/DriveWindows.png";
                             }
-                            item.IsChecked = GetBoolFromLocalSettings(newDriveLetter);
+                            item.IsChecked = GetBoolFromLocalSettings(ConvertStringToNumericRepresentation(drive));
                             items.Add(item);
                         }
                         else
